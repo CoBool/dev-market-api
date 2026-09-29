@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Article } from './interfaces/article.interface.js';
+import { CreateArticleDto } from './dto/create-article.dto.js';
 
 @Injectable()
 export class ArticlesService {
+  private nextId = 3;
   private articles: Article[] = [
     {
       id: 1,
@@ -27,5 +29,19 @@ export class ArticlesService {
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
     return article;
+  }
+
+  create(createArticleDto: CreateArticleDto): Article {
+    const { title, content} = createArticleDto;
+    const newArticle: Article = {
+      id: this.nextId++,
+      title,
+      content,
+      createdAt: new Date()
+    };
+
+    this.articles.push(newArticle);
+
+    return newArticle;
   }
 }
