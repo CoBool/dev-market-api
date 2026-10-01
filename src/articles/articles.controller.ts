@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Param, Body, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe } from '@nestjs/common';
 import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
+import { UpdateArticleDto } from './dto/update-article.dto.js';
 
 import type { Article } from './interfaces/article.interface.js';
 
@@ -21,5 +22,10 @@ export class ArticlesController {
   @Post()
   create(@Body() body: CreateArticleDto): Article {
     return this.articlesService.create(body);
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateArticleDto): Article {
+    return this.articlesService.update(id, body);
   }
 }

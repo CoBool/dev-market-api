@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Article } from './interfaces/article.interface.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
+import { UpdateArticleDto } from './dto/update-article.dto.js';
 
 @Injectable()
 export class ArticlesService {
@@ -43,5 +44,13 @@ export class ArticlesService {
     this.articles.push(newArticle);
 
     return newArticle;
+  }
+
+  update(id: number, updateArticleDto: UpdateArticleDto): Article {
+    const article = this.findOne(id);
+
+    Object.assign(article, updateArticleDto);
+
+    return article;
   }
 }
