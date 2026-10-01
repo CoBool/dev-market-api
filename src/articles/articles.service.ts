@@ -53,4 +53,10 @@ export class ArticlesService {
 
     return article;
   }
+
+  remove(id: number): void {
+    this.findOne(id);
+
+    this.articles = this.articles.filter((article) => article.id !== id);
+  }
 }
