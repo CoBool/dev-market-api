@@ -5,6 +5,7 @@ import { SignUpDto } from './dto/sign-up.dto.js';
 import type { User } from '../generated/prisma/client.js';
 import { SignInDto } from './dto/sign-in.dto.js';
 import type { AuthTokens } from './interfaces/auth-tokens.interface.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 
 @Controller('auth')
 export class AuthController {
@@ -19,5 +20,11 @@ export class AuthController {
   @Post('sign-up')
   signUp(@Body() body: SignUpDto): Promise<Omit<User, 'passwordHash'>> {
     return this.authService.signUp(body);
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  refreshAccessToken(@Body() body: RefreshTokenDto): Promise<AuthTokens> {
+    return this.authService.refreshAccessToken(body);
   }
 }
