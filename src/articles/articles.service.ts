@@ -2,9 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Article } from './interfaces/article.interface.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class ArticlesService {
+  constructor(private readonly prisma: PrismaService) {}
   private nextId = 3;
   private articles: Article[] = [
     {
@@ -20,8 +22,8 @@ export class ArticlesService {
       createdAt: new Date(),
     },
   ];
-  findAll(): Article[] {
-    return this.articles;
+  async findAll(): Promise<Article[]> {
+    return this.prisma.article.findMany();
   }
 
   findOne(id: number): Article {
@@ -32,18 +34,12 @@ export class ArticlesService {
     return article;
   }
 
-  create(createArticleDto: CreateArticleDto): Article {
+  async create(createArticleDto: CreateArticleDto): Promise<Article> {
     const { title, content } = createArticleDto;
-    const newArticle: Article = {
-      id: this.nextId++,
-      title,
-      content,
-      createdAt: new Date(),
-    };
 
-    this.articles.push(newArticle);
-
-    return newArticle;
+    return this.prisma.article.create({
+      data: { title, content },
+    });
   }
 
   update(id: number, updateArticleDto: UpdateArticleDto): Article {

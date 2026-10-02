@@ -20,7 +20,7 @@ export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
-  findAll(): Article[] {
+  findAll(): Promise<Article[]> {
     return this.articlesService.findAll();
   }
 
@@ -30,7 +30,7 @@ export class ArticlesController {
   }
 
   @Post()
-  create(@Body() body: CreateArticleDto): Article {
+  create(@Body() body: CreateArticleDto): Promise<Article> {
     return this.articlesService.create(body);
   }
 
