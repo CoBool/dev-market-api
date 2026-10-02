@@ -6,12 +6,14 @@ import { ArticlesModule } from './articles/articles.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.js';
+import { AuthModule } from './auth/auth.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ArticlesModule,
     PrismaModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [
