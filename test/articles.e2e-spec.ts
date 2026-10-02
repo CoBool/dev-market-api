@@ -131,7 +131,9 @@ describe('Articles (e2e)', () => {
       .send({ title: '수정 할 제목', content: '수정 할 내용' })
       .expect(404);
 
-    expect(res.body).toMatchObject({ message: '게시글을 찾을 수 없습니다.' });
+    expect(res.body).toMatchObject({
+      message: '요청한 데이터를 찾을 수 없습니다.',
+    });
   });
 
   it('PATCH /articles/:id 제목 빈값 -> 400', async () => {
@@ -174,7 +176,9 @@ describe('Articles (e2e)', () => {
       .delete(`/articles/99999`)
       .expect(404);
 
-    expect(res.body).toMatchObject({ message: '게시글을 찾을 수 없습니다.' });
+    expect(res.body).toMatchObject({
+      message: '요청한 데이터를 찾을 수 없습니다.',
+    });
   });
 
   it('POST /articles 모르는 필드 입력 -> 400', async () => {

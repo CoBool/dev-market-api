@@ -38,8 +38,6 @@ export class ArticlesService {
     id: number,
     updateArticleDto: UpdateArticleDto,
   ): Promise<Article> {
-    await this.findOne(id);
-
     return this.prisma.article.update({
       where: { id },
       data: updateArticleDto,
@@ -47,8 +45,6 @@ export class ArticlesService {
   }
 
   async remove(id: number): Promise<void> {
-    await this.findOne(id);
-
     await this.prisma.article.delete({
       where: { id },
     });
