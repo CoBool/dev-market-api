@@ -4,7 +4,8 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { ArticlesModule } from './articles/articles.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
-import { APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.js';
 
 @Module({
   imports: [
@@ -21,6 +22,10 @@ import { APP_PIPE } from '@nestjs/core';
         whitelist: true,
         forbidNonWhitelisted: true,
       }),
+    },
+    {
+      provide: APP_FILTER,
+      useClass: PrismaExceptionFilter,
     },
   ],
 })
