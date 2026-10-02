@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -8,5 +10,7 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    globalSetup: ['./test/global-setup.ts'],
+    env: parseEnv(readFileSync('.env.test', 'utf8'))
   },
 });
