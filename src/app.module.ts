@@ -13,12 +13,15 @@ import { APP_PIPE } from '@nestjs/core';
     PrismaModule,
   ],
   controllers: [AppController],
-  providers: [AppService, {
-    provide: APP_PIPE,
-    useValue: new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true
-    })
-  }],
+  providers: [
+    AppService,
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    },
+  ],
 })
 export class AppModule {}
