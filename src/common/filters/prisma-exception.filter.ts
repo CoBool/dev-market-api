@@ -13,6 +13,13 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
 
     switch (exception.code) {
+      case 'P2002':
+        response.status(HttpStatus.CONFLICT).json({
+          statusCode: HttpStatus.CONFLICT,
+          message: '이미 사용중인 값입니다.',
+          error: 'Conflict',
+        });
+        return;
       case 'P2025':
         response.status(HttpStatus.NOT_FOUND).json({
           statusCode: HttpStatus.NOT_FOUND,
