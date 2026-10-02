@@ -13,7 +13,7 @@ import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 
-import type { Article } from './interfaces/article.interface.js';
+import type { Article } from '../generated/prisma/client.js';
 
 @Controller('articles')
 export class ArticlesController {
@@ -25,7 +25,7 @@ export class ArticlesController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number): Article {
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<Article> {
     return this.articlesService.findOne(id);
   }
 
@@ -38,13 +38,13 @@ export class ArticlesController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateArticleDto,
-  ): Article {
+  ): Promise<Article> {
     return this.articlesService.update(id, body);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseIntPipe) id: number): void {
-    this.articlesService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    return this.articlesService.remove(id);
   }
 }
