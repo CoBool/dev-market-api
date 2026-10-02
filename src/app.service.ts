@@ -7,6 +7,6 @@ export class AppService {
     return 'Hello World!';
   }
   getPing(): PingResponse {
-    return {message: 'Pong!'};
+    return { message: 'Pong!' };
   }
 }

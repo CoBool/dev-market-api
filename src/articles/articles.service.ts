@@ -19,26 +19,26 @@ export class ArticlesService {
       content: '다시만나요',
       createdAt: new Date(),
     },
-  ]
+  ];
   findAll(): Article[] {
     return this.articles;
   }
 
-  findOne(id:number): Article {
+  findOne(id: number): Article {
     const article = this.articles.find((article) => article.id === id);
-    
+
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
     return article;
   }
 
   create(createArticleDto: CreateArticleDto): Article {
-    const { title, content} = createArticleDto;
+    const { title, content } = createArticleDto;
     const newArticle: Article = {
       id: this.nextId++,
       title,
       content,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
 
     this.articles.push(newArticle);

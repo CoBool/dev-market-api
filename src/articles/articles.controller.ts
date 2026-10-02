@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  ParseIntPipe,
+  HttpCode,
+} from '@nestjs/common';
 import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
@@ -13,9 +23,9 @@ export class ArticlesController {
   findAll(): Article[] {
     return this.articlesService.findAll();
   }
-  
+
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id:number): Article {
+  findOne(@Param('id', ParseIntPipe) id: number): Article {
     return this.articlesService.findOne(id);
   }
 
@@ -25,7 +35,10 @@ export class ArticlesController {
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateArticleDto): Article {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateArticleDto,
+  ): Article {
     return this.articlesService.update(id, body);
   }
 
