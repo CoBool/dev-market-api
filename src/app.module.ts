@@ -32,6 +32,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
       useValue: new ValidationPipe({
         whitelist: true,
         forbidNonWhitelisted: true,
+        transform: true,
       }),
     },
     {

@@ -8,17 +8,33 @@ import type { Article } from '../generated/prisma/client.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import type { Paginated } from '../common/interfaces/paginated.interface.js';
+import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
 
 @Injectable()
 export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(): Promise<Article[]> {
-    return this.prisma.article.findMany({
-      orderBy: {
-        id: 'desc',
-      },
-    });
+  async findAll(query: PaginationQueryDto): Promise<Paginated<Article>> {
+    const { skip, take } = getSkipTake(query);
+
+    const [items, totalCount] = await this.prisma.$transaction([
+      this.prisma.article.findMany({
+        orderBy: {
+          id: 'desc',
+        },
+        skip,
+        take,
+      }),
+
+      this.prisma.article.count(),
+    ]);
+
+    return {
+      items,
+      meta: buildPageMeta(query, totalCount),
+    };
   }
 
   async findOne(id: number): Promise<Article> {

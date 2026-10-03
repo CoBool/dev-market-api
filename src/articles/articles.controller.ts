@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   HttpCode,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
@@ -20,14 +21,16 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { Throttle } from '@nestjs/throttler';
 import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
+import type { Paginated } from '../common/interfaces/paginated.interface.js';
 
 @Controller('articles')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
-  findAll(): Promise<Article[]> {
-    return this.articlesService.findAll();
+  findAll(@Query() query: PaginationQueryDto): Promise<Paginated<Article>> {
+    return this.articlesService.findAll(query);
   }
 
   @Get(':id')
