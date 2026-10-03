@@ -4,6 +4,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { UserThrottlerGuard } from '../src/common/guards/user-throttler.guard.js';
 
 describe('Articles (e2e)', () => {
   let app: INestApplication<App>;
@@ -36,7 +37,11 @@ describe('Articles (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // POST /articles에 적용된 UserThrottlerGuard로 인해 연속 작성 테스트가 429로 실패하는 것을 방지
+      .overrideGuard(UserThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
