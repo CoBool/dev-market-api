@@ -8,12 +8,16 @@ import {
   Body,
   ParseIntPipe,
   HttpCode,
+  UseGuards,
 } from '@nestjs/common';
 import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 
 import type { Article } from '../generated/prisma/client.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 
 @Controller('articles')
 export class ArticlesController {
@@ -30,8 +34,12 @@ export class ArticlesController {
   }
 
   @Post()
-  create(@Body() body: CreateArticleDto): Promise<Article> {
-    return this.articlesService.create(body);
+  @UseGuards(JwtAuthGuard)
+  create(
+    @Body() body: CreateArticleDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<Article> {
+    return this.articlesService.create(body, user.id);
   }
 
   @Patch(':id')

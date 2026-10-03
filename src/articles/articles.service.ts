@@ -26,11 +26,14 @@ export class ArticlesService {
     return article;
   }
 
-  async create(createArticleDto: CreateArticleDto): Promise<Article> {
+  async create(
+    createArticleDto: CreateArticleDto,
+    writerId: number,
+  ): Promise<Article> {
     const { title, content } = createArticleDto;
 
     return this.prisma.article.create({
-      data: { title, content },
+      data: { title, content, writerId },
     });
   }
 
