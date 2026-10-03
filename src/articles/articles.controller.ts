@@ -15,7 +15,6 @@ import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 
-import type { Article } from '../generated/prisma/client.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
@@ -23,18 +22,21 @@ import { Throttle } from '@nestjs/throttler';
 import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { FindArticlesQueryDto } from './dto/find-articles-query.dto.js';
+import type { ArticleWithWriter } from './articles.select.js';
 
 @Controller('articles')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
-  findAll(@Query() query: FindArticlesQueryDto): Promise<Paginated<Article>> {
+  findAll(
+    @Query() query: FindArticlesQueryDto,
+  ): Promise<Paginated<ArticleWithWriter>> {
     return this.articlesService.findAll(query);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number): Promise<Article> {
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<ArticleWithWriter> {
     return this.articlesService.findOne(id);
   }
 
@@ -44,7 +46,7 @@ export class ArticlesController {
   create(
     @Body() createArticleDto: CreateArticleDto,
     @CurrentUser() user: AuthUser,
-  ): Promise<Article> {
+  ): Promise<ArticleWithWriter> {
     return this.articlesService.create(createArticleDto, user.id);
   }
 
@@ -54,7 +56,7 @@ export class ArticlesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateArticleDto: UpdateArticleDto,
     @CurrentUser() user: AuthUser,
-  ): Promise<Article> {
+  ): Promise<ArticleWithWriter> {
     return this.articlesService.update(id, updateArticleDto, user.id);
   }
 

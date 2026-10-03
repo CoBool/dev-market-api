@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Article, Prisma } from '../generated/prisma/client.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -14,12 +14,15 @@ import type {
   ArticleSearchType,
   FindArticlesQueryDto,
 } from './dto/find-articles-query.dto.js';
+import { articleArgs, type ArticleWithWriter } from './articles.select.js';
 
 @Injectable()
 export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: FindArticlesQueryDto): Promise<Paginated<Article>> {
+  async findAll(
+    query: FindArticlesQueryDto,
+  ): Promise<Paginated<ArticleWithWriter>> {
     const { skip, take } = getSkipTake(query);
     const where = this.buildSearchWhere(query.keyword, query.searchType);
 
@@ -31,9 +34,9 @@ export class ArticlesService {
         },
         skip,
         take,
+        ...articleArgs,
       }),
 
-      // 목록과 같은 조건으로 세야 totalCount/totalPages가 검색 결과와 맞음
       this.prisma.article.count({ where }),
     ]);
 
@@ -43,9 +46,10 @@ export class ArticlesService {
     };
   }
 
-  async findOne(id: number): Promise<Article> {
+  async findOne(id: number): Promise<ArticleWithWriter> {
     const article = await this.prisma.article.findUnique({
       where: { id },
+      ...articleArgs,
     });
 
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
@@ -56,11 +60,12 @@ export class ArticlesService {
   async create(
     createArticleDto: CreateArticleDto,
     writerId: number,
-  ): Promise<Article> {
+  ): Promise<ArticleWithWriter> {
     const { title, content } = createArticleDto;
 
     return this.prisma.article.create({
       data: { title, content, writerId },
+      ...articleArgs,
     });
   }
 
@@ -68,26 +73,27 @@ export class ArticlesService {
     id: number,
     updateArticleDto: UpdateArticleDto,
     userId: number,
-  ): Promise<Article> {
+  ): Promise<ArticleWithWriter> {
     if (!updateArticleDto || Object.keys(updateArticleDto).length === 0) {
       throw new BadRequestException('수정할 내용이 없습니다.');
     }
     const article = await this.findOne(id);
 
-    if (article.writerId !== userId) {
+    if (article.writer.id !== userId) {
       throw new ForbiddenException('작성자만 수정할 수 있습니다.');
     }
 
     return this.prisma.article.update({
       where: { id },
       data: updateArticleDto,
+      ...articleArgs,
     });
   }
 
   async remove(id: number, userId: number): Promise<void> {
     const article = await this.findOne(id);
 
-    if (article.writerId !== userId) {
+    if (article.writer.id !== userId) {
       throw new ForbiddenException('작성자만 삭제할 수 있습니다.');
     }
 
