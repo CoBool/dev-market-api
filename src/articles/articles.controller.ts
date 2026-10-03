@@ -21,15 +21,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { Throttle } from '@nestjs/throttler';
 import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
+import { FindArticlesQueryDto } from './dto/find-articles-query.dto.js';
 
 @Controller('articles')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
-  findAll(@Query() query: PaginationQueryDto): Promise<Paginated<Article>> {
+  findAll(@Query() query: FindArticlesQueryDto): Promise<Paginated<Article>> {
     return this.articlesService.findAll(query);
   }
 

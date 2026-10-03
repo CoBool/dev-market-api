@@ -4,23 +4,28 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Article } from '../generated/prisma/client.js';
+import type { Article, Prisma } from '../generated/prisma/client.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
+import type {
+  ArticleSearchType,
+  FindArticlesQueryDto,
+} from './dto/find-articles-query.dto.js';
 
 @Injectable()
 export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: PaginationQueryDto): Promise<Paginated<Article>> {
+  async findAll(query: FindArticlesQueryDto): Promise<Paginated<Article>> {
     const { skip, take } = getSkipTake(query);
+    const where = this.buildSearchWhere(query.keyword, query.searchType);
 
     const [items, totalCount] = await this.prisma.$transaction([
       this.prisma.article.findMany({
+        where,
         orderBy: {
           id: 'desc',
         },
@@ -28,7 +33,8 @@ export class ArticlesService {
         take,
       }),
 
-      this.prisma.article.count(),
+      // 목록과 같은 조건으로 세야 totalCount/totalPages가 검색 결과와 맞음
+      this.prisma.article.count({ where }),
     ]);
 
     return {
@@ -88,5 +94,25 @@ export class ArticlesService {
     await this.prisma.article.delete({
       where: { id },
     });
+  }
+
+  private buildSearchWhere(
+    keyword: string | undefined,
+    searchType: ArticleSearchType,
+  ): Prisma.ArticleWhereInput {
+    // 검색어가 없으면 조건 없음 (전체 목록)
+    if (!keyword) return {};
+
+    const conditions: Prisma.ArticleWhereInput[] = [];
+
+    if (searchType === 'title' || searchType === 'all') {
+      conditions.push({ title: { contains: keyword, mode: 'insensitive' } });
+    }
+
+    if (searchType === 'content' || searchType === 'all') {
+      conditions.push({ content: { contains: keyword, mode: 'insensitive' } });
+    }
+
+    return { OR: conditions };
   }
 }
