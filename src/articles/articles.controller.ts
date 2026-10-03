@@ -36,23 +36,29 @@ export class ArticlesController {
   @Post()
   @UseGuards(JwtAuthGuard)
   create(
-    @Body() body: CreateArticleDto,
+    @Body() createArticleDto: CreateArticleDto,
     @CurrentUser() user: AuthUser,
   ): Promise<Article> {
-    return this.articlesService.create(body, user.id);
+    return this.articlesService.create(createArticleDto, user.id);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: UpdateArticleDto,
+    @Body() updateArticleDto: UpdateArticleDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<Article> {
-    return this.articlesService.update(id, body);
+    return this.articlesService.update(id, updateArticleDto, user.id);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
-    return this.articlesService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ): Promise<void> {
+    return this.articlesService.remove(id, user.id);
   }
 }

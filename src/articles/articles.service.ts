@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Article } from '../generated/prisma/client.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
@@ -40,14 +45,30 @@ export class ArticlesService {
   async update(
     id: number,
     updateArticleDto: UpdateArticleDto,
+    userId: number,
   ): Promise<Article> {
+    if (!updateArticleDto || Object.keys(updateArticleDto).length === 0) {
+      throw new BadRequestException('수정할 내용이 없습니다.');
+    }
+    const article = await this.findOne(id);
+
+    if (article.writerId !== userId) {
+      throw new ForbiddenException('작성자만 수정할 수 있습니다.');
+    }
+
     return this.prisma.article.update({
       where: { id },
       data: updateArticleDto,
     });
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: number, userId: number): Promise<void> {
+    const article = await this.findOne(id);
+
+    if (article.writerId !== userId) {
+      throw new ForbiddenException('작성자만 삭제할 수 있습니다.');
+    }
+
     await this.prisma.article.delete({
       where: { id },
     });
