@@ -18,6 +18,8 @@ model Article {
   content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  writerId  Int
+  writer    User     @relation(fields: [writerId], references: [id])
 }
 
 model User {
@@ -28,4 +30,6 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  articles Article[]
 }
