@@ -83,9 +83,11 @@ describe('Articles (e2e)', () => {
     expect(res.body).toMatchObject({
       title: '제목',
       content: '내용',
-      writerId: userA.id,
+      writer: { id: userA.id, nickname: 'userA' },
     });
     expect(res.body.id).toEqual(expect.any(Number));
+    // writerId는 writer.id와 중복이라 응답에서 제외됨
+    expect(res.body).not.toHaveProperty('writerId');
   });
 
   it('GET /articles -> 최신순', async () => {

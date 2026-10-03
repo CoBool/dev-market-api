@@ -107,7 +107,7 @@ describe('Throttle (e2e)', () => {
     expect(resB.body).toMatchObject({
       title: 'B의 첫 글',
       content: '내용',
-      writerId: userB.id,
+      writer: { id: userB.id },
     });
   });
 
