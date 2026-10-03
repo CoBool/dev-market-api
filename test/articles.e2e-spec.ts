@@ -34,6 +34,15 @@ describe('Articles (e2e)', () => {
     };
   }
 
+  // 검색 테스트에서 지정한 게시글을 오래된 순서부터 저장
+  async function createArticles(
+    articles: { title: string; content: string }[],
+  ) {
+    await prisma.article.createMany({
+      data: articles.map((article) => ({ ...article, writerId: userA.id })),
+    });
+  }
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -257,6 +266,173 @@ describe('Articles (e2e)', () => {
     ['모르는 쿼리 파라미터', '?foo=bar'],
   ])('GET /articles 잘못된 쿼리 %s -> 400', async (_name, query) => {
     await request(app.getHttpServer()).get(`/articles${query}`).expect(400);
+  });
+
+  it('GET /articles?keyword=노트북 검색어가 제목 또는 본문에 포함 -> 3개 200', async () => {
+    await createArticles([
+      { title: '노트북 팝니다', content: '상태 좋아요' },
+      { title: '중고 거래', content: '노트북 있어요' },
+      { title: '노트북 구해요', content: '노트북 찾습니다' },
+      { title: '책상 팝니다', content: '의자도 있어요' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '노트북' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['노트북 구해요', '중고 거래', '노트북 팝니다'],
+    );
+  });
+
+  it('GET /articles?searchType=title 제목 검색 -> 제목에 키워드가 있는 글만 200', async () => {
+    await createArticles([
+      { title: '노트북 팝니다', content: '상태 좋아요' },
+      { title: '중고 거래', content: '노트북 있어요' },
+      { title: '노트북 구해요', content: '노트북 찾습니다' },
+      { title: '책상 팝니다', content: '의자도 있어요' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '노트북', searchType: 'title' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['노트북 구해요', '노트북 팝니다'],
+    );
+  });
+
+  it('GET /articles?searchType=content 본문 검색 -> 본문에 키워드가 있는 글만 200', async () => {
+    await createArticles([
+      { title: '노트북 팝니다', content: '상태 좋아요' },
+      { title: '중고 거래', content: '노트북 있어요' },
+      { title: '노트북 구해요', content: '노트북 찾습니다' },
+      { title: '책상 팝니다', content: '의자도 있어요' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '노트북', searchType: 'content' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['노트북 구해요', '중고 거래'],
+    );
+  });
+
+  it('GET /articles?keyword=nestjs 대소문자 구분 없이 검색 -> 200', async () => {
+    await createArticles([
+      { title: 'NestJS 가이드', content: '서버 개발' },
+      { title: '다른 글', content: '검색 대상 아님' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: 'nestjs' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['NestJS 가이드'],
+    );
+  });
+
+  it('GET /articles?keyword=노트북 검색 메타 정보 -> 검색 결과 기준 200', async () => {
+    await createArticles([
+      { title: '노트북 하나', content: '판매' },
+      { title: '무관한 글 1', content: '내용' },
+      { title: '노트북 둘', content: '판매' },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        title: `무관한 글 ${index + 2}`,
+        content: '검색어 없음',
+      })),
+      { title: '노트북 셋', content: '판매' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '노트북', limit: 2 })
+      .expect(200);
+
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.meta).toEqual({
+      page: 1,
+      limit: 2,
+      totalCount: 3,
+      totalPages: 2,
+    });
+  });
+
+  it('GET /articles?keyword=노트북&page=2&limit=2 검색 결과 안에서 페이지네이션 -> 200', async () => {
+    await createArticles([
+      { title: '노트북 1', content: '판매' },
+      { title: '관계없는 글 A', content: '내용' },
+      { title: '노트북 2', content: '판매' },
+      { title: '관계없는 글 B', content: '내용' },
+      { title: '노트북 3', content: '판매' },
+      { title: '노트북 4', content: '판매' },
+      { title: '관계없는 글 C', content: '내용' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '노트북', page: 2, limit: 2 })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['노트북 2', '노트북 1'],
+    );
+    expect(res.body.meta).toEqual({
+      page: 2,
+      limit: 2,
+      totalCount: 4,
+      totalPages: 2,
+    });
+  });
+
+  it('GET /articles?searchType=title keyword 없이 요청 -> 전체 목록 200', async () => {
+    await createArticles([
+      { title: '노트북 팝니다', content: '상태 좋아요' },
+      { title: '중고 거래', content: '노트북 있어요' },
+      { title: '책상 팝니다', content: '의자도 있어요' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ searchType: 'title' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['책상 팝니다', '중고 거래', '노트북 팝니다'],
+    );
+    expect(res.body.meta.totalCount).toBe(3);
+  });
+
+  it('GET /articles?keyword=없는검색어 결과 없음 -> 빈 목록과 검색 메타 정보 200', async () => {
+    await createArticles([
+      { title: '책상 팝니다', content: '의자도 있어요' },
+      { title: '의자 팝니다', content: '책상도 있어요' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '없는검색어' })
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(res.body.meta.totalCount).toBe(0);
+    expect(res.body.meta.totalPages).toBe(0);
+  });
+
+  it.each([
+    ['허용되지 않은 searchType', { keyword: '노트북', searchType: 'writer' }],
+    ['51자 keyword', { keyword: '가'.repeat(51) }],
+  ])('GET /articles 잘못된 검색 쿼리 %s -> 400', async (_name, query) => {
+    await request(app.getHttpServer())
+      .get('/articles')
+      .query(query)
+      .expect(400);
   });
 
   it('POST /articles 빈 본문 -> 400', async () => {
