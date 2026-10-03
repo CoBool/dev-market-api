@@ -96,8 +96,167 @@ describe('Articles (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/articles').expect(200);
 
     // 4. 나중에 만든 B가 먼저 와야 함
-    const titles = res.body.map((article: { title: string }) => article.title);
+    const titles = res.body.items.map(
+      (article: { title: string }) => article.title,
+    );
     expect(titles).toEqual(['B', 'A']);
+  });
+
+  it('GET /articles 쿼리 없이 요청 -> 기본 페이지네이션 200', async () => {
+    await prisma.article.createMany({
+      data: [
+        { title: '첫 글', content: '내용', writerId: userA.id },
+        { title: '두 번째 글', content: '내용', writerId: userA.id },
+      ],
+    });
+
+    const res = await request(app.getHttpServer()).get('/articles').expect(200);
+
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.meta).toEqual({
+      page: 1,
+      limit: 10,
+      totalCount: 2,
+      totalPages: 1,
+    });
+  });
+
+  it('GET /articles?limit=10 게시글 15개 -> 첫 페이지 10개와 전체 페이지 수 200', async () => {
+    await prisma.article.createMany({
+      data: Array.from({ length: 15 }, (_, index) => ({
+        title: `게시글 ${index + 1}`,
+        content: '내용',
+        writerId: userA.id,
+      })),
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/articles?limit=10')
+      .expect(200);
+
+    expect(res.body.items).toHaveLength(10);
+    expect(res.body.meta).toEqual({
+      page: 1,
+      limit: 10,
+      totalCount: 15,
+      totalPages: 2,
+    });
+  });
+
+  it('GET /articles?page=2&limit=10 두 번째 페이지 -> 첫 페이지와 겹치지 않음 200', async () => {
+    await prisma.article.createMany({
+      data: Array.from({ length: 15 }, (_, index) => ({
+        title: `게시글 ${index + 1}`,
+        content: '내용',
+        writerId: userA.id,
+      })),
+    });
+
+    const firstPage = await request(app.getHttpServer())
+      .get('/articles?page=1&limit=10')
+      .expect(200);
+    const secondPage = await request(app.getHttpServer())
+      .get('/articles?page=2&limit=10')
+      .expect(200);
+
+    expect(secondPage.body.items).toHaveLength(5);
+    const firstPageIds = firstPage.body.items.map(
+      (item: { id: number }) => item.id,
+    );
+    const secondPageIds = secondPage.body.items.map(
+      (item: { id: number }) => item.id,
+    );
+    expect(secondPageIds.some((id: number) => firstPageIds.includes(id))).toBe(
+      false,
+    );
+    expect(secondPage.body.meta).toEqual({
+      page: 2,
+      limit: 10,
+      totalCount: 15,
+      totalPages: 2,
+    });
+  });
+
+  it('GET /articles?page=2&limit=2 두 번째 페이지 -> 세 번째와 네 번째 최신 글 200', async () => {
+    await prisma.article.createMany({
+      data: Array.from({ length: 5 }, (_, index) => ({
+        title: `게시글 ${index + 1}`,
+        content: '내용',
+        writerId: userA.id,
+      })),
+    });
+
+    // 기대값은 구현과 같은 쿼리(skip/take)로 만들지 않고 직접 정함
+    // 최신순 [5번째, 4번째, 3번째, 2번째, 1번째] 중 page=2, limit=2 → 3번째, 2번째로 만든 글
+    const created = await prisma.article.findMany({
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+    const ids = created.map((article) => article.id);
+    const expectedIds = [ids[2], ids[1]];
+
+    const res = await request(app.getHttpServer())
+      .get('/articles?page=2&limit=2')
+      .expect(200);
+
+    expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+      expectedIds,
+    );
+  });
+
+  it('GET /articles?page=999 마지막 페이지보다 큰 페이지 -> 빈 목록과 전체 개수 200', async () => {
+    await prisma.article.createMany({
+      data: Array.from({ length: 3 }, (_, index) => ({
+        title: `게시글 ${index + 1}`,
+        content: '내용',
+        writerId: userA.id,
+      })),
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/articles?page=999')
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(res.body.meta).toEqual({
+      page: 999,
+      limit: 10,
+      totalCount: 3,
+      totalPages: 1,
+    });
+  });
+
+  it('GET /articles 게시글 0개 -> 빈 목록과 페이지 수 0', async () => {
+    const res = await request(app.getHttpServer()).get('/articles').expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(res.body.meta).toEqual({
+      page: 1,
+      limit: 10,
+      totalCount: 0,
+      totalPages: 0,
+    });
+  });
+
+  it('GET /articles?page=2&limit=3 쿼리 값 숫자 변환 -> number 타입 200', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/articles?page=2&limit=3')
+      .expect(200);
+
+    expect(typeof res.body.meta.page).toBe('number');
+    expect(typeof res.body.meta.limit).toBe('number');
+  });
+
+  it.each([
+    ['page=0', '?page=0'],
+    ['page=-1', '?page=-1'],
+    ['page=1.5', '?page=1.5'],
+    ['page=abc', '?page=abc'],
+    ['limit=0', '?limit=0'],
+    ['limit=51', '?limit=51'],
+    ['모르는 쿼리 파라미터', '?foo=bar'],
+  ])('GET /articles 잘못된 쿼리 %s -> 400', async (_name, query) => {
+    await request(app.getHttpServer()).get(`/articles${query}`).expect(400);
   });
 
   it('POST /articles 빈 본문 -> 400', async () => {
