@@ -18,6 +18,8 @@ import type { Article } from '../generated/prisma/client.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
+import { Throttle } from '@nestjs/throttler';
+import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
 
 @Controller('articles')
 export class ArticlesController {
@@ -34,7 +36,8 @@ export class ArticlesController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @Throttle({ default: { limit: 1, ttl: 10_000 } })
   create(
     @Body() createArticleDto: CreateArticleDto,
     @CurrentUser() user: AuthUser,
