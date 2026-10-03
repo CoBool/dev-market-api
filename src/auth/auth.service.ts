@@ -19,7 +19,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   private async issueTokens(userId: number): Promise<AuthTokens> {
     const payload = { sub: userId };
