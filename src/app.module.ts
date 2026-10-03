@@ -8,6 +8,7 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -16,6 +17,12 @@ import { UsersModule } from './users/users.module.js';
     PrismaModule,
     AuthModule,
     UsersModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: 100,
+      },
+    ]),
   ],
   controllers: [AppController],
   providers: [
