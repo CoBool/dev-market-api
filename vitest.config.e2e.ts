@@ -11,6 +11,8 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     globalSetup: ['./test/global-setup.ts'],
-    env: parseEnv(readFileSync('.env.test', 'utf8'))
+    // 모든 e2e 파일이 같은 테스트 DB를 쓰므로 파일을 하나씩 순서대로 실행
+    fileParallelism: false,
+    env: parseEnv(readFileSync('.env.test', 'utf8')),
   },
 });
