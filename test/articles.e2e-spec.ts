@@ -653,6 +653,31 @@ describe('Articles (e2e)', () => {
       .expect(401);
   });
 
+  it('POST /articles 삭제된 사용자의 토큰 -> 409', async () => {
+    const deletedUser = await createUser(
+      'deleted-article-user@test.com',
+      'deletedArticleUser',
+    );
+
+    // 이 사용자는 게시글이 없으므로 외래 키 제약에 걸리지 않고 삭제할 수 있음
+    await prisma.user.delete({ where: { id: deletedUser.id } });
+
+    // JwtAuthGuard는 토큰 서명만 확인하므로 통과하고, DB의 외래 키 제약에서 막힌다.
+    // 원래는 Guard에서 401이 맞으며, 회원 탈퇴 기능 때 처리 예정
+    const res = await request(app.getHttpServer())
+      .post('/articles')
+      .set('Authorization', `Bearer ${deletedUser.accessToken}`)
+      .send({ title: '삭제된 사용자 글', content: '생성되면 안 되는 글' })
+      .expect(409);
+
+    expect(res.body.message).toEqual(
+      '참조 관계 때문에 요청을 처리할 수 없습니다.',
+    );
+    expect(
+      await prisma.article.count({ where: { title: '삭제된 사용자 글' } }),
+    ).toBe(0);
+  });
+
   it('PATCH /articles/:id 본문 없음 -> 400', async () => {
     const created = await request(app.getHttpServer())
       .post('/articles')
