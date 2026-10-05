@@ -14,7 +14,6 @@ import { ArticlesService } from './articles.service.js';
 import { CreateArticleDto } from './dto/create-article.dto.js';
 import { UpdateArticleDto } from './dto/update-article.dto.js';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { Throttle } from '@nestjs/throttler';
@@ -23,12 +22,14 @@ import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { FindArticlesQueryDto } from './dto/find-articles-query.dto.js';
 import { IdParamDto } from '../common/dto/id-param.dto.js';
 import type { ArticleWithWriter } from './articles.select.js';
+import { Public } from '../auth/decorators/public.decorator.js';
 
 @Controller('articles')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
+  @Public()
   findAll(
     @Query() query: FindArticlesQueryDto,
   ): Promise<Paginated<ArticleWithWriter>> {
@@ -36,12 +37,13 @@ export class ArticlesController {
   }
 
   @Get(':id')
+  @Public()
   findOne(@Param() { id }: IdParamDto): Promise<ArticleWithWriter> {
     return this.articlesService.findOne(id);
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(UserThrottlerGuard)
   @Throttle({ default: { limit: 1, ttl: 10_000 } })
   create(
     @Body() createArticleDto: CreateArticleDto,
@@ -51,7 +53,6 @@ export class ArticlesController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
   update(
     @Param() { id }: IdParamDto,
     @Body() updateArticleDto: UpdateArticleDto,
@@ -61,7 +62,6 @@ export class ArticlesController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   remove(
     @Param() { id }: IdParamDto,

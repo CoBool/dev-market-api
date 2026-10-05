@@ -6,7 +6,9 @@ import type { User } from '../generated/prisma/client.js';
 import { SignInDto } from './dto/sign-in.dto.js';
 import type { AuthTokens } from './interfaces/auth-tokens.interface.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { Public } from './decorators/public.decorator.js';
 
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
