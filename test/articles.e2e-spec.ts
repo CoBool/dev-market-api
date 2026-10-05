@@ -265,10 +265,27 @@ describe('Articles (e2e)', () => {
     ['page=abc', '?page=abc'],
     ['limit=0', '?limit=0'],
     ['limit=51', '?limit=51'],
+    ['limit=1e308', '?limit=1e308'],
     ['모르는 쿼리 파라미터', '?foo=bar'],
   ])('GET /articles 잘못된 쿼리 %s -> 400', async (_name, query) => {
     await request(app.getHttpServer()).get(`/articles${query}`).expect(400);
   });
+
+  // page 에는 상한이 없다. 아무리 큰 값이어도 에러가 아니라 "빈 목록"이 정답이다.
+  // 여기서 500 이 나면 offset 이 터진 것이므로, 상태코드보다 200 을 고정하는 것이 목적이다.
+  it.each(['1e308', '9223372036854775807', '99999999999999999999'])(
+    'GET /articles?page=%s page 상한이 없음 -> 200 + 빈 목록 (500 이 아니어야 한다)',
+    async (page) => {
+      await createArticles([{ title: '글 하나', content: '내용' }]);
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles?page=${page}`)
+        .expect(200);
+
+      expect(res.body.items).toEqual([]);
+      expect(res.body.meta.totalCount).toBe(1);
+    },
+  );
 
   it('GET /articles?keyword=노트북 검색어가 제목 또는 본문에 포함 -> 3개 200', async () => {
     await createArticles([
@@ -470,15 +487,60 @@ describe('Articles (e2e)', () => {
     expect(res.body).toMatchObject({ message: '게시글을 찾을 수 없습니다.' });
   });
 
-  it('GET /articles/:id id가 숫자가 아닐때 -> 400', async () => {
-    // 존재하지 않는 게시글 ID로 조회
+  it.each([
+    ['숫자가 아닌 값', 'abc'],
+    ['0', '0'],
+    ['음수', '-5'],
+    ['0으로 시작', '01'],
+    ['16진수 표기', '0x10'],
+    ['지수 표기', '1e3'],
+    ['소수점 표기', '1.0'],
+    ['앞 공백', '%207'],
+    ['지수 표기의 큰 값', '1e308'],
+  ])('GET /articles/:id 형식이 잘못된 id(%s) -> 400', async (_name, id) => {
+    // id는 양의 십진 정수 문자열만 받는다 (Number()가 0x10, 1e3, 1.0, 앞 공백도 숫자로 바꾸기 때문)
     const res = await request(app.getHttpServer())
-      .get(`/articles/abc`) // 존재하지 않는 ID
+      .get(`/articles/${id}`)
       .expect(400);
 
-    expect(res.body.message).toEqual(
-      'Validation failed (numeric string is expected)',
-    );
+    expect(res.body.message).toContain('id must be an integer number');
+  });
+
+  it.each([
+    ['int32 범위를 넘는 값', '2147483648'],
+    ['int64를 훨씬 넘는 값', '99999999999999999999'],
+  ])('GET /articles/:id %s -> 400', async (_name, id) => {
+    // 형식은 맞지만 id는 Int(32비트 정수) 컬럼이라 이 범위를 넘으면 Prisma가 500을 만든다
+    const res = await request(app.getHttpServer())
+      .get(`/articles/${id}`)
+      .expect(400);
+
+    expect(res.body.message).toEqual([
+      'id must not be greater than 2147483647',
+    ]);
+  });
+
+  it.each([
+    ['한 자리 최솟값', '1'],
+    ['한 자리', '7'],
+  ])(
+    'GET /articles/:id %s -> 404 (검증은 통과, 존재하지 않는 글)',
+    async (_name, id) => {
+      // 형식이 올바른 작은 id는 400이 아니라 조회까지 가야 한다 (beforeEach에서 게시글을 비움)
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${id}`)
+        .expect(404);
+
+      expect(res.body.message).toEqual('게시글을 찾을 수 없습니다.');
+    },
+  );
+
+  it('GET /articles/:id int32 최댓값 -> 404 (검증은 통과, 존재하지 않는 글)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/articles/2147483647`)
+      .expect(404);
+
+    expect(res.body.message).toEqual('게시글을 찾을 수 없습니다.');
   });
 
   it('PATCH /articles/:id 정상수정 -> 200', async () => {
