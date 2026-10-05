@@ -29,6 +29,13 @@ export class PrismaExceptionFilter implements ExceptionFilter {
           error: 'Not Found',
         });
         return;
+      case 'P2003':
+        response.status(HttpStatus.CONFLICT).json({
+          statusCode: HttpStatus.CONFLICT,
+          message: '참조 관계 때문에 요청을 처리할 수 없습니다.',
+          error: 'Conflict',
+        });
+        return;
       default:
         this.logger.error(
           `처리되지 않은 Prisma 에러: ${exception.code}`,
