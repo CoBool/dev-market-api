@@ -9,7 +9,7 @@ const INT32_MAX = 2_147_483_647;
 
 export class IdParamDto {
   @Transform(({ value }) =>
-    typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : NaN
+    typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : NaN,
   )
   @IsInt()
   @Max(INT32_MAX)
