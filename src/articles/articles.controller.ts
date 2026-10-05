@@ -6,7 +6,6 @@ import {
   Delete,
   Param,
   Body,
-  ParseIntPipe,
   HttpCode,
   UseGuards,
   Query,
@@ -22,6 +21,7 @@ import { Throttle } from '@nestjs/throttler';
 import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { FindArticlesQueryDto } from './dto/find-articles-query.dto.js';
+import { IdParamDto } from '../common/dto/id-param.dto.js';
 import type { ArticleWithWriter } from './articles.select.js';
 
 @Controller('articles')
@@ -36,7 +36,7 @@ export class ArticlesController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number): Promise<ArticleWithWriter> {
+  findOne(@Param() { id }: IdParamDto): Promise<ArticleWithWriter> {
     return this.articlesService.findOne(id);
   }
 
@@ -53,7 +53,7 @@ export class ArticlesController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param() { id }: IdParamDto,
     @Body() updateArticleDto: UpdateArticleDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ArticleWithWriter> {
@@ -64,7 +64,7 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   remove(
-    @Param('id', ParseIntPipe) id: number,
+    @Param() { id }: IdParamDto,
     @CurrentUser() user: AuthUser,
   ): Promise<void> {
     return this.articlesService.remove(id, user.id);
