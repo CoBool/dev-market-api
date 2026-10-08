@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateArticleCommentDto } from './dto/create-article-comment.dto.js';
 import {
@@ -7,6 +11,7 @@ import {
 } from './article-comments.select.js';
 import { CursorPaginationQueryDto } from '../../common/dto/cursor-pagination-query.dto.js';
 import type { CursorPaginated } from '../../common/interfaces/cursor-paginated.interface.js';
+import { UpdateArticleCommentDto } from './dto/update-article-comment.dto.js';
 
 @Injectable()
 export class ArticleCommentsService {
@@ -21,19 +26,21 @@ export class ArticleCommentsService {
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
   }
 
-  async create(
-    articleId: number,
-    createArticleCommentDto: CreateArticleCommentDto,
-    writerId: number,
-  ): Promise<ArticleCommentWithWriter> {
-    await this.ensureArticleExists(articleId);
-
-    const { content } = createArticleCommentDto;
-
-    return this.prisma.articleComment.create({
-      data: { content, articleId, writerId },
-      ...articleCommentArgs,
+  private async findOwnedComment(
+    id: number,
+    userId: number,
+    action: '수정' | '삭제',
+  ): Promise<void> {
+    const comment = await this.prisma.articleComment.findUnique({
+      where: { id },
+      select: { writerId: true },
     });
+
+    if (!comment) throw new NotFoundException('댓글을 찾을 수 없습니다.');
+
+    if (comment.writerId !== userId) {
+      throw new ForbiddenException(`작성자만 ${action}할 수 있습니다.`);
+    }
   }
 
   async findAll(
@@ -61,5 +68,44 @@ export class ArticleCommentsService {
     const nextCursor = hasNext ? (items.at(-1)?.id ?? null) : null;
 
     return { items, meta: { nextCursor } };
+  }
+
+  async create(
+    articleId: number,
+    createArticleCommentDto: CreateArticleCommentDto,
+    writerId: number,
+  ): Promise<ArticleCommentWithWriter> {
+    await this.ensureArticleExists(articleId);
+
+    const { content } = createArticleCommentDto;
+
+    return this.prisma.articleComment.create({
+      data: { content, articleId, writerId },
+      ...articleCommentArgs,
+    });
+  }
+
+  async update(
+    id: number,
+    updateArticleCommentDto: UpdateArticleCommentDto,
+    userId: number,
+  ): Promise<ArticleCommentWithWriter> {
+    await this.findOwnedComment(id, userId, '수정');
+
+    const { content } = updateArticleCommentDto;
+
+    return this.prisma.articleComment.update({
+      where: { id },
+      data: { content },
+      ...articleCommentArgs,
+    });
+  }
+
+  async remove(id: number, userId: number): Promise<void> {
+    await this.findOwnedComment(id, userId, '삭제');
+
+    await this.prisma.articleComment.delete({
+      where: { id },
+    });
   }
 }
