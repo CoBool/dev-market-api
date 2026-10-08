@@ -20,6 +20,22 @@ import { articleArgs, type ArticleWithWriter } from './articles.select.js';
 export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async findOwnedArticle(
+    id: number,
+    userId: number,
+    action: '수정' | '삭제',
+  ): Promise<void> {
+    const article = await this.prisma.article.findUnique({
+      where: { id },
+      select: { writerId: true },
+    });
+
+    if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
+    if (article.writerId !== userId) {
+      throw new ForbiddenException(`작성자만 ${action}할 수 있습니다.`);
+    }
+  }
+
   async findAll(
     query: FindArticlesQueryDto,
   ): Promise<Paginated<ArticleWithWriter>> {
@@ -78,11 +94,7 @@ export class ArticlesService {
     if (!updateArticleDto || Object.keys(updateArticleDto).length === 0) {
       throw new BadRequestException('수정할 내용이 없습니다.');
     }
-    const article = await this.findOne(id);
-
-    if (article.writer.id !== userId) {
-      throw new ForbiddenException('작성자만 수정할 수 있습니다.');
-    }
+    await this.findOwnedArticle(id, userId, '수정');
 
     return this.prisma.article.update({
       where: { id },
@@ -92,11 +104,7 @@ export class ArticlesService {
   }
 
   async remove(id: number, userId: number): Promise<void> {
-    const article = await this.findOne(id);
-
-    if (article.writer.id !== userId) {
-      throw new ForbiddenException('작성자만 삭제할 수 있습니다.');
-    }
+    await this.findOwnedArticle(id, userId, '삭제');
 
     await this.prisma.article.delete({
       where: { id },
