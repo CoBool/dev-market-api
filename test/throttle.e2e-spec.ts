@@ -2,38 +2,49 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { hash } from 'bcryptjs';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 describe('Throttle (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  let jwtService: JwtService;
+  let configService: ConfigService;
   let userSeq = 0;
-
-  // 회원가입 + 로그인해서 id와 accessToken을 돌려줌
-  async function createUser(email: string, nickname: string) {
-    const password = 'password1234';
-
-    const signUp = await request(app.getHttpServer())
-      .post('/auth/sign-up')
-      .send({ email, nickname, password })
-      .expect(201);
-
-    const signIn = await request(app.getHttpServer())
-      .post('/auth/sign-in')
-      .send({ email, password })
-      .expect(200);
-
-    return {
-      id: signUp.body.id as number,
-      accessToken: signIn.body.accessToken as string,
-    };
-  }
 
   // 테스트 간 throttler 횟수 격리를 위해 매번 새 사용자를 생성
   async function createUniqueUser() {
     userSeq += 1;
-    return createUser(`throttle_${userSeq}@test.com`, `user${userSeq}`);
+    // 준비 단계에서 가입/로그인 제한 횟수를 소비하지 않도록 DB에 직접 만들고 토큰을 발급
+    const user = await prisma.user.create({
+      data: {
+        email: `throttle_${userSeq}@test.com`,
+        nickname: `user${userSeq}`,
+        passwordHash: 'not-used-for-login',
+      },
+    });
+    const accessToken = await jwtService.signAsync(
+      { sub: user.id },
+      {
+        secret: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        expiresIn: '15m',
+      },
+    );
+
+    return { id: user.id, accessToken };
+  }
+
+  // 각 인증 제한 테스트에 새 Throttler 저장소를 제공해 테스트 간 횟수를 격리
+  async function createAuthThrottleApp() {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    const authApp = moduleRef.createNestApplication();
+    await authApp.init();
+    return authApp;
   }
 
   beforeAll(async () => {
@@ -45,6 +56,8 @@ describe('Throttle (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+    jwtService = app.get(JwtService);
+    configService = app.get(ConfigService);
 
     // 게시글이 사용자를 참조하므로 게시글 → 사용자 순서로 삭제
     await prisma.article.deleteMany();
@@ -159,5 +172,121 @@ describe('Throttle (e2e)', () => {
 
     expect(firstRes.body.message).toEqual('로그인이 필요합니다.');
     expect(secondRes.body.message).toEqual('로그인이 필요합니다.');
+  });
+
+  it('POST /auth/sign-in 틀린 비밀번호 5회 후 6번째 요청 -> 401, 429', async () => {
+    const authApp = await createAuthThrottleApp();
+    try {
+      userSeq += 1;
+      await prisma.user.create({
+        data: {
+          email: `throttle_signin_${userSeq}@test.com`,
+          nickname: `signinUser${userSeq}`,
+          passwordHash: await hash('correct-password', 10),
+        },
+      });
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const res = await request(authApp.getHttpServer())
+          .post('/auth/sign-in')
+          .send({
+            email: `throttle_signin_${userSeq}@test.com`,
+            password: 'wrong-password',
+          })
+          .expect(401);
+
+        expect(res.body.message).toEqual(
+          '이메일 또는 비밀번호가 올바르지 않습니다.',
+        );
+      }
+
+      const blocked = await request(authApp.getHttpServer())
+        .post('/auth/sign-in')
+        .send({
+          email: `throttle_signin_${userSeq}@test.com`,
+          password: 'wrong-password',
+        })
+        .expect(429);
+      expect(blocked.body.message).toEqual(
+        'ThrottlerException: Too Many Requests',
+      );
+    } finally {
+      await authApp.close();
+    }
+  });
+
+  it('POST /auth/sign-up 3회 후 4번째 요청 -> 201, 429', async () => {
+    const authApp = await createAuthThrottleApp();
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        userSeq += 1;
+        await request(authApp.getHttpServer())
+          .post('/auth/sign-up')
+          .send({
+            email: `throttle_signup_${userSeq}@test.com`,
+            nickname: `signupUser${userSeq}`,
+            password: 'password1234',
+          })
+          .expect(201);
+      }
+
+      userSeq += 1;
+      const blocked = await request(authApp.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          email: `throttle_signup_${userSeq}@test.com`,
+          nickname: `signupUser${userSeq}`,
+          password: 'password1234',
+        })
+        .expect(429);
+      expect(blocked.body.message).toEqual(
+        'ThrottlerException: Too Many Requests',
+      );
+    } finally {
+      await authApp.close();
+    }
+  });
+
+  it('POST /auth/sign-in 로그인 제한 직후 POST /auth/sign-up -> 회원가입은 201', async () => {
+    const authApp = await createAuthThrottleApp();
+    try {
+      userSeq += 1;
+      await prisma.user.create({
+        data: {
+          email: `throttle_independent_${userSeq}@test.com`,
+          nickname: `independentUser${userSeq}`,
+          passwordHash: await hash('correct-password', 10),
+        },
+      });
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await request(authApp.getHttpServer())
+          .post('/auth/sign-in')
+          .send({
+            email: `throttle_independent_${userSeq}@test.com`,
+            password: 'wrong-password',
+          })
+          .expect(401);
+      }
+      await request(authApp.getHttpServer())
+        .post('/auth/sign-in')
+        .send({
+          email: `throttle_independent_${userSeq}@test.com`,
+          password: 'wrong-password',
+        })
+        .expect(429);
+
+      // sign-in 제한을 다 쓴 직후에도 별도 라우트인 sign-up 카운터는 남아 있어 정상 처리
+      await request(authApp.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          email: `throttle_independent_signup_${userSeq}@test.com`,
+          nickname: `independentSignup${userSeq}`,
+          password: 'password1234',
+        })
+        .expect(201);
+    } finally {
+      await authApp.close();
+    }
   });
 });

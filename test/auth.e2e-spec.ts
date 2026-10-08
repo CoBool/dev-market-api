@@ -4,6 +4,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { UserThrottlerGuard } from '../src/common/guards/user-throttler.guard.js';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
@@ -37,7 +38,11 @@ describe('Auth (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // 이 파일은 인증 동작을 검증하므로 요청 제한 횟수가 테스트에 영향을 주지 않게 비활성화
+      .overrideGuard(UserThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
