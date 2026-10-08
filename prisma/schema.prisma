@@ -20,6 +20,8 @@ model Article {
   updatedAt DateTime @updatedAt
   writerId  Int
   writer    User     @relation(fields: [writerId], references: [id])
+
+  @@index([writerId])
 }
 
 model User {
