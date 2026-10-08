@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ArticleCommentsService } from './article-comments.service.js';
 import { IdParamDto } from '../../common/dto/id-param.dto.js';
@@ -19,6 +20,8 @@ import { Public } from '../../auth/decorators/public.decorator.js';
 import { CursorPaginationQueryDto } from '../../common/dto/cursor-pagination-query.dto.js';
 import type { CursorPaginated } from '../../common/interfaces/cursor-paginated.interface.js';
 import { UpdateArticleCommentDto } from './dto/update-article-comment.dto.js';
+import { UserThrottlerGuard } from '../../common/guards/user-throttler.guard.js';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller()
 export class ArticleCommentsController {
@@ -36,6 +39,8 @@ export class ArticleCommentsController {
   }
 
   @Post('articles/:id/comments')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 10_000 } })
   create(
     @Param() { id }: IdParamDto,
     @Body() createArticleCommentDto: CreateArticleCommentDto,
