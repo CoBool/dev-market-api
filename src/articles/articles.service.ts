@@ -109,14 +109,16 @@ export class ArticlesService {
     // 검색어가 없으면 조건 없음 (전체 목록)
     if (!keyword) return {};
 
+    const escaped = keyword.replace(/[\\%_]/g, '\\$&');
+
     const conditions: Prisma.ArticleWhereInput[] = [];
 
     if (searchType === 'title' || searchType === 'all') {
-      conditions.push({ title: { contains: keyword, mode: 'insensitive' } });
+      conditions.push({ title: { contains: escaped, mode: 'insensitive' } });
     }
 
     if (searchType === 'content' || searchType === 'all') {
-      conditions.push({ content: { contains: keyword, mode: 'insensitive' } });
+      conditions.push({ content: { contains: escaped, mode: 'insensitive' } });
     }
 
     return { OR: conditions };
