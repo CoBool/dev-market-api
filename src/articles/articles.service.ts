@@ -23,27 +23,28 @@ export class ArticlesService {
   async findAll(
     query: FindArticlesQueryDto,
   ): Promise<Paginated<ArticleWithWriter>> {
-    const { skip, take } = getSkipTake(query);
     const where = this.buildSearchWhere(query.keyword, query.searchType);
 
-    const [items, totalCount] = await this.prisma.$transaction([
-      this.prisma.article.findMany({
-        where,
-        orderBy: {
-          id: 'desc',
-        },
-        skip,
-        take,
-        ...articleArgs,
-      }),
+    const totalCount = await this.prisma.article.count({ where });
+    const meta = buildPageMeta(query, totalCount);
 
-      this.prisma.article.count({ where }),
-    ]);
+    if (query.page > meta.totalPages) {
+      return { items: [], meta };
+    }
 
-    return {
-      items,
-      meta: buildPageMeta(query, totalCount),
-    };
+    const { skip, take } = getSkipTake(query);
+
+    const items = await this.prisma.article.findMany({
+      where,
+      orderBy: {
+        id: 'desc',
+      },
+      skip,
+      take,
+      ...articleArgs,
+    });
+
+    return { items, meta };
   }
 
   async findOne(id: number): Promise<ArticleWithWriter> {
