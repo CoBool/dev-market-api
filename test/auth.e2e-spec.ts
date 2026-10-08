@@ -103,6 +103,48 @@ describe('Auth (e2e)', () => {
       expect(res.body.message).toEqual('이미 사용중인 값입니다.');
     });
 
+    it('POST /auth/sign-up 대문자 이메일 -> 소문자로 응답 및 저장 201', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'Case@Test.com' })
+        .expect(201);
+
+      expect(res.body.email).toEqual('case@test.com');
+
+      const saved = await prisma.user.findUnique({
+        where: { email: 'case@test.com' },
+      });
+      expect(saved?.email).toEqual('case@test.com');
+    });
+
+    it('POST /auth/sign-up 대소문자만 다른 이메일 재가입 -> 409', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'Case@Test.com' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'CASE@test.com', nickname: 'otherNickname' })
+        .expect(409);
+
+      expect(res.body.message).toEqual('이미 사용중인 값입니다.');
+    });
+
+    it('POST /auth/sign-up 이메일 앞뒤 공백 -> 공백 없이 저장 201', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: '  Space@Test.com  ' })
+        .expect(201);
+
+      expect(res.body.email).toEqual('space@test.com');
+
+      const saved = await prisma.user.findUnique({
+        where: { email: 'space@test.com' },
+      });
+      expect(saved?.email).toEqual('space@test.com');
+    });
+
     it('POST /auth/sign-up 닉네임 중복 -> 409', async () => {
       await request(app.getHttpServer())
         .post('/auth/sign-up')
@@ -166,6 +208,53 @@ describe('Auth (e2e)', () => {
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
       });
+    });
+
+    it('POST /auth/sign-in 이메일 대소문자 혼용 -> 로그인 성공 200', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'case@test.com', nickname: 'caseUser' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-in')
+        .send({ email: 'cAsE@tEsT.cOm', password: user.password })
+        .expect(200);
+
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.refreshToken).toEqual(expect.any(String));
+    });
+
+    it('POST /auth/sign-in 이메일 앞뒤 공백 -> 로그인 성공 200', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: '  padded@test.com  ', nickname: 'paddedUser' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-in')
+        .send({ email: '  padded@test.com  ', password: user.password })
+        .expect(200);
+
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.refreshToken).toEqual(expect.any(String));
+    });
+
+    it('POST /auth/sign-in 대소문자만 다른 이메일과 틀린 비밀번호 -> 일반 로그인 실패와 같은 401', async () => {
+      const noUser = await request(app.getHttpServer())
+        .post('/auth/sign-in')
+        .send({ email: 'nobody@test.com', password: user.password })
+        .expect(401);
+
+      const wrongPassword = await request(app.getHttpServer())
+        .post('/auth/sign-in')
+        .send({ email: 'AUTH@test.com', password: 'wrong-password' })
+        .expect(401);
+
+      expect(noUser.body.message).toEqual(
+        '이메일 또는 비밀번호가 올바르지 않습니다.',
+      );
+      expect(wrongPassword.body).toEqual(noUser.body);
     });
 
     it('POST /auth/sign-in 없는 이메일 / 틀린 비밀번호 -> 401, 같은 메시지', async () => {
