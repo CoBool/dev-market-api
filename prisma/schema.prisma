@@ -21,6 +21,23 @@ model Article {
   writerId  Int
   writer    User     @relation(fields: [writerId], references: [id])
 
+  comments ArticleComment[]
+
+  @@index([writerId])
+}
+
+model ArticleComment {
+  id        Int      @id @default(autoincrement())
+  content   String   @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  articleId Int
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  writerId  Int
+  writer    User    @relation(fields: [writerId], references: [id])
+
+  @@index([articleId, id])
   @@index([writerId])
 }
 
@@ -33,5 +50,6 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  articles Article[]
+  articles        Article[]
+  articleComments ArticleComment[]
 }
