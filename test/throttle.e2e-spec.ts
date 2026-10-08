@@ -37,6 +37,28 @@ describe('Throttle (e2e)', () => {
     return { id: user.id, accessToken };
   }
 
+  // 게시글 작성 API의 Throttler를 소비하지 않도록 DB에 직접 준비
+  async function createArticle(writerId: number) {
+    return prisma.article.create({
+      data: {
+        title: '댓글 제한 테스트 게시글',
+        content: '게시글 본문',
+        writerId,
+      },
+    });
+  }
+
+  function postComment(
+    articleId: number,
+    user: { id: number; accessToken: string },
+    content: string,
+  ) {
+    return request(app.getHttpServer())
+      .post(`/articles/${articleId}/comments`)
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ content });
+  }
+
   // 각 인증 제한 테스트에 새 Throttler 저장소를 제공해 테스트 간 횟수를 격리
   async function createAuthThrottleApp() {
     const moduleRef = await Test.createTestingModule({
@@ -288,5 +310,98 @@ describe('Throttle (e2e)', () => {
     } finally {
       await authApp.close();
     }
+  });
+
+  it('POST /articles/:id/comments 같은 사용자가 3회 작성 후 4회째 -> 201, 429', async () => {
+    const user = await createUniqueUser();
+    const article = await createArticle(user.id);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postComment(article.id, user, `댓글 ${attempt}`).expect(201);
+    }
+
+    const blocked = await postComment(article.id, user, '네 번째 댓글').expect(
+      429,
+    );
+    expect(blocked.body.message).toEqual(
+      'ThrottlerException: Too Many Requests',
+    );
+  });
+
+  it('POST /articles/:id/comments 429 응답 댓글은 DB에 생성되지 않음 -> 429', async () => {
+    const user = await createUniqueUser();
+    const article = await createArticle(user.id);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postComment(article.id, user, `저장되는 댓글 ${attempt}`).expect(
+        201,
+      );
+    }
+
+    await postComment(article.id, user, '저장되면 안 되는 네 번째 댓글').expect(
+      429,
+    );
+
+    expect(
+      await prisma.articleComment.count({
+        where: {
+          articleId: article.id,
+          writerId: user.id,
+          content: '저장되면 안 되는 네 번째 댓글',
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.articleComment.count({ where: { articleId: article.id } }),
+    ).toBe(3);
+  });
+
+  it('POST /articles/:id/comments A가 제한된 직후 B가 같은 게시글에 작성 -> 201', async () => {
+    const userA = await createUniqueUser();
+    const userB = await createUniqueUser();
+    const article = await createArticle(userA.id);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postComment(article.id, userA, `A의 댓글 ${attempt}`).expect(201);
+    }
+    const blocked = await postComment(
+      article.id,
+      userA,
+      'A의 차단 댓글',
+    ).expect(429);
+    expect(blocked.body.message).toEqual(
+      'ThrottlerException: Too Many Requests',
+    );
+
+    const commentB = await postComment(article.id, userB, 'B의 첫 댓글').expect(
+      201,
+    );
+    expect(commentB.body).toMatchObject({
+      content: 'B의 첫 댓글',
+      articleId: article.id,
+      writer: { id: userB.id },
+    });
+  });
+
+  it('POST /articles/:id/comments 댓글 제한 초과 후 POST /articles -> 201', async () => {
+    const user = await createUniqueUser();
+    const article = await createArticle(user.id);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postComment(article.id, user, `댓글 ${attempt}`).expect(201);
+    }
+    await postComment(article.id, user, '차단되는 네 번째 댓글').expect(429);
+
+    const createdArticle = await request(app.getHttpServer())
+      .post('/articles')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ title: '제한 분리 확인 글', content: '댓글 제한과 별개' })
+      .expect(201);
+
+    expect(createdArticle.body).toMatchObject({
+      title: '제한 분리 확인 글',
+      content: '댓글 제한과 별개',
+      writer: { id: user.id },
+    });
   });
 });
