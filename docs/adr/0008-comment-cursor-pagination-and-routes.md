@@ -17,8 +17,17 @@
 | DELETE | `/article-comments/:id` | 필요, 작성자만 |
 
 ### 목록
-- **cursor** 페이지네이션: `{ items, meta: { nextCursor } }`
+- **cursor** 페이지네이션: `{ items, meta: { nextCursor } }` (`CursorPaginated<T>`, `common/interfaces`)
 - **오래된순** (`id` 오름차순)
+- 쿼리: `CursorPaginationQueryDto` (`common/dto`)
+  - `cursor`: 선택. 양의 십진 정수, int32 범위 (`toPositiveInt`, [0005](0005-input-normalization-and-format-validation.md))
+  - `limit`: 기본 10, **1~100** (게시글 목록은 1~50). 댓글은 짧아서 한 번에 더 가져와도 부담이 적다
+- 조회: `where: { articleId, id: { gt: cursor } }`, `orderBy: { id: 'asc' }`, `take: limit + 1`
+  - `limit + 1`개를 가져와 다음 페이지 존재를 판단한다 (count 쿼리 없음)
+  - 다음이 있으면 `nextCursor` = 응답 마지막 댓글의 id, 없으면 `null`
+- Prisma의 `cursor` 옵션 대신 `id > cursor` 조건을 쓴다. Prisma `cursor`는 그 행이 존재해야 하므로,
+  클라이언트가 가진 cursor 댓글이 삭제되면 문제가 생긴다.
+- `CursorPaginationQueryDto`는 `PaginationQueryDto`를 상속하지 않는다 (`page`가 딸려 오지 않도록).
 
 ### 내용
 - trim + `@IsString()` + `@IsNotEmpty()` + `@MaxLength(500)`

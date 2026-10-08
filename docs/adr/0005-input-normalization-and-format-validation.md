@@ -1,7 +1,7 @@
 # 0005. 입력값 정규화와 형식 검증
 
 - 상태: 승인됨
-- 날짜: 2026-10-08
+- 날짜: 2026-10-08 (같은 날 cursor 보완)
 
 ## 배경
 원본 API는 "정상적인 입력"만 가정했다. 직접 확인한 결과:
@@ -24,8 +24,11 @@
 - 대소문자 구분 없음 (`mode: 'insensitive'`).
 - 공백만 있는 검색어 → 검색 안 함 → **전체 목록**.
 
-### 경로 id
-- `IdParamDto`: 정규식 `^[1-9]\d*$`를 통과한 문자열만 숫자로 바꾸고, `@Max(2147483647)`(PostgreSQL integer).
+### 경로 id와 cursor (id 값)
+- 공용 변환 `common/transforms/to-positive-int.ts`(`toPositiveInt`): 정규식 `^[1-9]\d*$`를 통과한 문자열만 숫자로 바꾸고,
+  그 외는 `NaN` → `@IsInt()`에서 400. 값이 없으면(`undefined`) 그대로 두어 `@IsOptional()`이 처리한다.
+- 범위는 `@Max(INT32_MAX)` (`common/constants/limits.ts`, PostgreSQL integer).
+- 적용: `IdParamDto.id`(경로), `CursorPaginationQueryDto.cursor`(쿼리).
 - 그 외(`0`, `-5`, `01`, `0x10`, `1e3`, `1.0`, 앞 공백)는 400.
 
 ## 근거
@@ -38,5 +41,7 @@
   원래 문자열을 볼 수 없다.
 
 ## 결과
-- 쿼리 파라미터(`page`, `limit`)는 `?page=1e1`(→10) 같은 표기를 그대로 받는다. 해가 없어 허용한다.
+- 게시글 목록의 `page`, `limit`은 `?page=1e1`(→10) 같은 표기를 그대로 받는다 (`@Type(() => Number)`).
+  위치·크기 힌트라 해가 없어 허용한다.
+- `cursor`는 쿼리 파라미터지만 **서버가 `nextCursor`로 준 댓글 id를 그대로 돌려받는 값**이라 id와 같은 엄격한 규칙을 쓴다 (2026-10-08 보완).
 - 기존 DB의 이메일이 정규화되지 않았다면 로그인이 안 될 수 있다 (2026-10-08 기준 개발 DB는 모두 정규화됨).
