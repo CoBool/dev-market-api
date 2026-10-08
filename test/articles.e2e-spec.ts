@@ -43,6 +43,16 @@ describe('Articles (e2e)', () => {
     });
   }
 
+  // LIKE 특수문자의 검색 동작을 확인할 게시글을 오래된 순서부터 저장
+  async function createSpecialCharacterArticles() {
+    await createArticles([
+      { title: '50%할인', content: '아무거나' },
+      { title: '일반 글', content: '아무거나' },
+      { title: 'snake_case 변수명', content: '언더스코어 예시' },
+      { title: '윈도우 경로', content: 'C:\\Users\\panda 폴더' },
+    ]);
+  }
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -451,6 +461,109 @@ describe('Articles (e2e)', () => {
     await request(app.getHttpServer())
       .get('/articles')
       .query(query)
+      .expect(400);
+  });
+
+  it('GET /articles?keyword=% 퍼센트 문자를 그대로 검색 -> 해당 글만 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '%' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['50%할인'],
+    );
+  });
+
+  it('GET /articles?keyword=_ 언더스코어 문자를 그대로 검색 -> 해당 글만 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '_' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['snake_case 변수명'],
+    );
+  });
+
+  it('GET /articles?keyword=\\ 백슬래시 문자를 본문에서 그대로 검색 -> 해당 글만 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '\\' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['윈도우 경로'],
+    );
+  });
+
+  it('GET /articles?keyword=%&searchType=content 본문에서 퍼센트 문자 검색 -> 결과 없음과 검색 메타 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '%', searchType: 'content' })
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(res.body.meta.totalCount).toBe(0);
+    expect(res.body.meta.totalPages).toBe(0);
+  });
+
+  it('GET /articles?keyword=+할인+ 앞뒤 공백을 제거하고 검색 -> 해당 글만 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: ' 할인 ' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['50%할인'],
+    );
+  });
+
+  it('GET /articles 공백만 있는 keyword -> 전체 목록 200', async () => {
+    await createSpecialCharacterArticles();
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: '   ' })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      ['윈도우 경로', 'snake_case 변수명', '일반 글', '50%할인'],
+    );
+    expect(res.body.meta.totalCount).toBe(4);
+  });
+
+  it('GET /articles keyword 앞뒤 공백을 제외한 50자 -> 200', async () => {
+    const keyword = '가'.repeat(50);
+    await createArticles([
+      { title: keyword, content: '50자 제목' },
+      { title: '다른 글', content: '검색 대상 아님' },
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: ` ${keyword} ` })
+      .expect(200);
+
+    expect(res.body.items.map((item: { title: string }) => item.title)).toEqual(
+      [keyword],
+    );
+  });
+
+  it('GET /articles keyword 앞뒤 공백을 제외해도 51자 -> 400', async () => {
+    await request(app.getHttpServer())
+      .get('/articles')
+      .query({ keyword: ` ${'가'.repeat(51)} ` })
       .expect(400);
   });
 
