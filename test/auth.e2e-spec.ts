@@ -105,7 +105,7 @@ describe('Auth (e2e)', () => {
         .send({ ...user, nickname: 'other' })
         .expect(409);
 
-      expect(res.body.message).toEqual('이미 사용중인 값입니다.');
+      expect(res.body.message).toEqual('이미 사용 중인 이메일입니다.');
     });
 
     it('POST /auth/sign-up 대문자 이메일 -> 소문자로 응답 및 저장 201', async () => {
@@ -130,10 +130,10 @@ describe('Auth (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/auth/sign-up')
-        .send({ ...user, email: 'CASE@test.com', nickname: 'otherNickname' })
+        .send({ ...user, email: 'CASE@test.com', nickname: 'otherNick' })
         .expect(409);
 
-      expect(res.body.message).toEqual('이미 사용중인 값입니다.');
+      expect(res.body.message).toEqual('이미 사용 중인 이메일입니다.');
     });
 
     it('POST /auth/sign-up 이메일 앞뒤 공백 -> 공백 없이 저장 201', async () => {
@@ -150,6 +150,114 @@ describe('Auth (e2e)', () => {
       expect(saved?.email).toEqual('space@test.com');
     });
 
+    it('POST /auth/sign-up nickname 앞뒤 공백 -> trim된 닉네임으로 응답 201', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-trim@test.com',
+          nickname: '  padNick  ',
+        })
+        .expect(201);
+
+      expect(res.body.nickname).toBe('padNick');
+    });
+
+    it('POST /auth/sign-up 이미 사용 중인 닉네임에 공백 추가 -> 409', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-existing@test.com',
+          nickname: 'takenNick',
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-spaced@test.com',
+          nickname: '  takenNick  ',
+        })
+        .expect(409);
+
+      expect(res.body.message).toEqual('이미 사용 중인 닉네임입니다.');
+    });
+
+    it('POST /auth/sign-up nickname 길이 경계 -> 1자·11자는 400, 2자·10자는 201', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'nickname-one@test.com', nickname: '가' })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'nickname-two@test.com', nickname: '가나' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-ten@test.com',
+          nickname: '0123456789',
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-eleven@test.com',
+          nickname: 'Abcd1234567',
+        })
+        .expect(400);
+    });
+
+    it('POST /auth/sign-up 10자 닉네임 앞뒤 공백 -> trim 후 201', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-ten-trim@test.com',
+          nickname: '  Abcd123456  ',
+        })
+        .expect(201);
+
+      expect(res.body.nickname).toBe('Abcd123456');
+    });
+
+    it('POST /auth/sign-up 한글·영문·숫자 혼합 닉네임 -> 201', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({
+          ...user,
+          email: 'nickname-mixed@test.com',
+          nickname: '판다Pa1',
+        })
+        .expect(201);
+
+      expect(res.body.nickname).toBe('판다Pa1');
+    });
+
+    it.each([
+      ['가운데 공백', 'nickname-inner-space@test.com', '판 다'],
+      ['특수문자', 'nickname-special@test.com', '판다!'],
+      ['밑줄', 'nickname-underscore@test.com', '판다_1'],
+      ['자음만', 'nickname-consonants@test.com', 'ㅋㅋㅋ'],
+      ['이모지', 'nickname-emoji@test.com', '판다😀'],
+      ['공백만', 'nickname-whitespace@test.com', '   '],
+    ])(
+      'POST /auth/sign-up nickname %s 허용되지 않음 -> 400',
+      async (_name, email, nickname) => {
+        await request(app.getHttpServer())
+          .post('/auth/sign-up')
+          .send({ ...user, email, nickname })
+          .expect(400);
+      },
+    );
+
     it('POST /auth/sign-up 닉네임 중복 -> 409', async () => {
       await request(app.getHttpServer())
         .post('/auth/sign-up')
@@ -162,7 +270,26 @@ describe('Auth (e2e)', () => {
         .send({ ...user, email: 'other@test.com' })
         .expect(409);
 
-      expect(res.body.message).toEqual('이미 사용중인 값입니다.');
+      expect(res.body.message).toEqual('이미 사용 중인 닉네임입니다.');
+    });
+
+    it('POST /auth/sign-up 이메일과 닉네임 모두 중복 -> 이메일 메시지로 409', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'primary@test.com', nickname: 'primaryA' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'secondary@test.com', nickname: 'secondaryB' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/sign-up')
+        .send({ ...user, email: 'primary@test.com', nickname: 'secondaryB' })
+        .expect(409);
+
+      expect(res.body.message).toEqual('이미 사용 중인 이메일입니다.');
     });
 
     it('POST /auth/sign-up 잘못된 이메일 -> 400', async () => {
