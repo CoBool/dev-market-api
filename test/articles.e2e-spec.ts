@@ -769,7 +769,7 @@ describe('Articles (e2e)', () => {
   it('POST /articles 삭제된 사용자의 토큰 -> 409', async () => {
     const deletedUser = await createUser(
       'deleted-article-user@test.com',
-      'deletedArticleUser',
+      'deleted1',
     );
 
     // 이 사용자는 게시글이 없으므로 외래 키 제약에 걸리지 않고 삭제할 수 있음

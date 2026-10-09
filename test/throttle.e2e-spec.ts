@@ -22,7 +22,7 @@ describe('Throttle (e2e)', () => {
     const user = await prisma.user.create({
       data: {
         email: `throttle_${userSeq}@test.com`,
-        nickname: `user${userSeq}`,
+        nickname: `u${userSeq}`,
         passwordHash: 'not-used-for-login',
       },
     });
@@ -203,7 +203,7 @@ describe('Throttle (e2e)', () => {
       await prisma.user.create({
         data: {
           email: `throttle_signin_${userSeq}@test.com`,
-          nickname: `signinUser${userSeq}`,
+          nickname: `si${userSeq}`,
           passwordHash: await hash('correct-password', 10),
         },
       });
@@ -246,7 +246,7 @@ describe('Throttle (e2e)', () => {
           .post('/auth/sign-up')
           .send({
             email: `throttle_signup_${userSeq}@test.com`,
-            nickname: `signupUser${userSeq}`,
+            nickname: `su${userSeq}`,
             password: 'password1234',
           })
           .expect(201);
@@ -257,7 +257,7 @@ describe('Throttle (e2e)', () => {
         .post('/auth/sign-up')
         .send({
           email: `throttle_signup_${userSeq}@test.com`,
-          nickname: `signupUser${userSeq}`,
+          nickname: `su${userSeq}`,
           password: 'password1234',
         })
         .expect(429);
@@ -276,7 +276,7 @@ describe('Throttle (e2e)', () => {
       await prisma.user.create({
         data: {
           email: `throttle_independent_${userSeq}@test.com`,
-          nickname: `independentUser${userSeq}`,
+          nickname: `iu${userSeq}`,
           passwordHash: await hash('correct-password', 10),
         },
       });
@@ -303,7 +303,7 @@ describe('Throttle (e2e)', () => {
         .post('/auth/sign-up')
         .send({
           email: `throttle_independent_signup_${userSeq}@test.com`,
-          nickname: `independentSignup${userSeq}`,
+          nickname: `is${userSeq}`,
           password: 'password1234',
         })
         .expect(201);

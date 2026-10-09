@@ -106,8 +106,8 @@ describe('Article comments (e2e)', () => {
     await prisma.article.deleteMany();
     await prisma.user.deleteMany();
 
-    userA = await createUser('comments-a@test.com', 'commentUserA');
-    userB = await createUser('comments-b@test.com', 'commentUserB');
+    userA = await createUser('comments-a@test.com', 'commA');
+    userB = await createUser('comments-b@test.com', 'commB');
   });
 
   beforeEach(async () => {
@@ -131,7 +131,7 @@ describe('Article comments (e2e)', () => {
     expect(res.body).toMatchObject({
       content: '좋은 게시글입니다.',
       articleId: article.id,
-      writer: { id: userA.id, nickname: 'commentUserA' },
+      writer: { id: userA.id, nickname: 'commA' },
     });
     expect(res.body.id).toEqual(expect.any(Number));
     expect(res.body.createdAt).toEqual(expect.any(String));
@@ -276,7 +276,7 @@ describe('Article comments (e2e)', () => {
     expect(res.body).toMatchObject({
       content: '다른 사용자도 댓글을 작성할 수 있습니다.',
       articleId: article.id,
-      writer: { id: userB.id, nickname: 'commentUserB' },
+      writer: { id: userB.id, nickname: 'commB' },
     });
     expect(res.body).not.toHaveProperty('writerId');
   });
@@ -480,7 +480,7 @@ describe('Article comments (e2e)', () => {
 
       expect(res.body.items[0]).toMatchObject({
         content: '작성자 포함 댓글',
-        writer: { id: userB.id, nickname: 'commentUserB' },
+        writer: { id: userB.id, nickname: 'commB' },
       });
       expect(res.body.items[0]).not.toHaveProperty('writerId');
     });
@@ -538,7 +538,7 @@ describe('Article comments (e2e)', () => {
         id: comment.body.id,
         content: '수정 후 댓글',
         articleId: article.id,
-        writer: { id: userA.id, nickname: 'commentUserA' },
+        writer: { id: userA.id, nickname: 'commA' },
       });
       expect(res.body).not.toHaveProperty('writerId');
 
