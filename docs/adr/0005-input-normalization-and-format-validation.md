@@ -1,7 +1,7 @@
 # 0005. 입력값 정규화와 형식 검증
 
 - 상태: 승인됨
-- 날짜: 2026-10-08 (같은 날 cursor 보완)
+- 날짜: 2026-10-08 (같은 날 cursor 보완, 2026-10-09 닉네임 추가)
 
 ## 배경
 원본 API는 "정상적인 입력"만 가정했다. 직접 확인한 결과:
@@ -14,9 +14,9 @@
 | 입력 | 처리 | 공용 함수 |
 |---|---|---|
 | 이메일 (가입·로그인 모두) | trim + 소문자 | `common/transforms/normalize-email.ts` |
-| 검색어, 게시글 제목·본문, 댓글 내용 | trim | `common/transforms/trim.ts` |
+| 검색어, 게시글 제목·본문, 댓글 내용, 닉네임 | trim | `common/transforms/trim.ts` |
 
-- trim 후 빈 문자열인 제목·본문·댓글은 `@IsNotEmpty()`로 400.
+- trim 후 빈 문자열인 제목·본문·댓글은 `@IsNotEmpty()`로 400. 닉네임은 `@Length(2, 10)`이 막는다 (규칙 전체는 [0011](0011-nickname-policy.md)).
 - `@IsString()`은 항상 함께 둔다 (`@IsNotEmpty()`는 타입을 확인하지 않는다).
 
 ### 검색

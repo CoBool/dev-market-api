@@ -32,6 +32,7 @@
 | [0008](0008-comment-cursor-pagination-and-routes.md) | 댓글 목록은 cursor, 오래된순 / 경로 설계 | 승인됨 |
 | [0009](0009-defer-article-content-max-length.md) | 게시글 본문 최대 길이는 에디터 도입 시 정한다 | 보류 |
 | [0010](0010-rate-limiting-policy.md) | 요청 제한 정책 | 승인됨 |
+| [0011](0011-nickname-policy.md) | 닉네임 정책 | 승인됨 |
 
 ## 템플릿
 
