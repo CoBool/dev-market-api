@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SignUpDto } from './dto/sign-up.dto.js';
 
@@ -19,7 +19,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   private async issueTokens(userId: number): Promise<AuthTokens> {
     const payload = { sub: userId };
@@ -64,6 +64,20 @@ export class AuthService {
 
   async signUp(signUpDto: SignUpDto): Promise<Omit<User, 'passwordHash'>> {
     const { email, nickname, password } = signUpDto;
+
+    const existingByEmail = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true }
+    });
+
+    if (existingByEmail) throw new ConflictException('이미 사용 중인 이메일입니다.');
+
+    const existingByNickname = await this.prisma.user.findUnique({
+      where: { nickname },
+      select: { id: true }
+    });
+
+    if (existingByNickname) throw new ConflictException('이미 사용 중인 닉네임입니다.');
 
     const passwordHash = await hash(password, 10);
 
