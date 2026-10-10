@@ -41,6 +41,22 @@ model ArticleComment {
   @@index([writerId])
 }
 
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(30)
+  description String   @db.Text
+  price       Int
+  tags        String[]
+  images      String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sellerId Int
+  seller   User   @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, id])
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique @db.VarChar(254)
@@ -52,4 +68,5 @@ model User {
 
   articles        Article[]
   articleComments ArticleComment[]
+  products        Product[]
 }
