@@ -44,7 +44,7 @@ model ArticleComment {
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique @db.VarChar(254)
-  nickname     String   @unique @db.VarChar(20)
+  nickname     String   @unique @db.VarChar(10)
   image        String?  @db.VarChar(200)
   passwordHash String
   createdAt    DateTime @default(now())
