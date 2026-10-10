@@ -236,9 +236,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.2
         version: 4.1.11(vitest@4.1.11)
-      dotenv:
-        specifier: ^18.0.5
-        version: 18.0.5
       oxlint:
         specifier: ^1.58.0
         version: 1.83.0(oxlint-tsgolint@7.0.2002)
@@ -1656,11 +1653,6 @@ packages:
 
   dotenv@18.0.3:
     resolution: {integrity: sha512-/8CJTyL817qPnfbQrJgOEcrU3fDrJkRIoXBE566wHuvIXKOCHUZhPqGPbCPi9SogjdGnreF0TlvnTgK6J/8zpA==}
-    engines: {node: '>=12'}
-    hasBin: true
-
-  dotenv@18.0.5:
-    resolution: {integrity: sha512-aBrGvt6KhjxbEnatqMWOMidftwsrCiCvqh1yNIGB9QyF0J+VcWkKDMsvYOEm7ZS82oiV+BT1sTOtIlAmUlTpwQ==}
     engines: {node: '>=12'}
     hasBin: true
 
@@ -3973,8 +3965,6 @@ snapshots:
   dotenv@17.4.2: {}
 
   dotenv@18.0.3: {}
-
-  dotenv@18.0.5: {}
 
   dunder-proto@1.0.1:
     dependencies:
