@@ -9,6 +9,7 @@ import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ProductsModule } from './products/products.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
         limit: 100,
       },
     ]),
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [
