@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { hash } from 'bcryptjs';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { resetDatabase } from './helpers/db.js';
 
 describe('Throttle (e2e)', () => {
   let app: INestApplication<App>;
@@ -59,6 +60,21 @@ describe('Throttle (e2e)', () => {
       .send({ content });
   }
 
+  function postProduct(
+    user: { id: number; accessToken: string },
+    name: string,
+  ) {
+    return request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({
+        name,
+        description: '상품 제한 테스트',
+        price: 1000,
+        tags: ['test'],
+      });
+  }
+
   // 각 인증 제한 테스트에 새 Throttler 저장소를 제공해 테스트 간 횟수를 격리
   async function createAuthThrottleApp() {
     const moduleRef = await Test.createTestingModule({
@@ -81,12 +97,11 @@ describe('Throttle (e2e)', () => {
     jwtService = app.get(JwtService);
     configService = app.get(ConfigService);
 
-    // 게시글이 사용자를 참조하므로 게시글 → 사용자 순서로 삭제
-    await prisma.article.deleteMany();
-    await prisma.user.deleteMany();
+    await resetDatabase(prisma);
   });
 
   beforeEach(async () => {
+    await prisma.product.deleteMany();
     await prisma.article.deleteMany();
   });
 
@@ -401,6 +416,79 @@ describe('Throttle (e2e)', () => {
     expect(createdArticle.body).toMatchObject({
       title: '제한 분리 확인 글',
       content: '댓글 제한과 별개',
+      writer: { id: user.id },
+    });
+  });
+
+  it('POST /products 같은 사용자가 연속 2회 요청 -> 201, 429', async () => {
+    const user = await createUniqueUser();
+
+    await postProduct(user, '첫 번째 상품').expect(201);
+    const blocked = await postProduct(user, '두 번째 상품').expect(429);
+
+    expect(blocked.body.message).toEqual(
+      'ThrottlerException: Too Many Requests',
+    );
+  });
+
+  it('POST /products 검증 실패 직후 정상 요청 -> 400, 429', async () => {
+    const user = await createUniqueUser();
+
+    // Guard가 ValidationPipe보다 먼저 실행되어 400 요청도 제한 횟수에 포함됨
+    await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ name: '', description: '잘못된 상품', price: -1, tags: [] })
+      .expect(400);
+
+    const blocked = await postProduct(user, '검증 후 상품').expect(429);
+    expect(blocked.body.message).toEqual(
+      'ThrottlerException: Too Many Requests',
+    );
+  });
+
+  it('POST /products A가 429를 받은 직후 B가 요청 -> 201', async () => {
+    const userA = await createUniqueUser();
+    const userB = await createUniqueUser();
+
+    await postProduct(userA, 'A의 첫 상품').expect(201);
+    await postProduct(userA, 'A의 차단 상품').expect(429);
+
+    const resB = await postProduct(userB, 'B의 첫 상품').expect(201);
+    expect(resB.body).toMatchObject({
+      name: 'B의 첫 상품',
+      seller: { id: userB.id },
+    });
+  });
+
+  it('POST /products 429 응답 상품은 DB에 생성되지 않음 -> 429', async () => {
+    const user = await createUniqueUser();
+
+    await postProduct(user, '저장되는 상품').expect(201);
+    await postProduct(user, '저장되지 않을 상품').expect(429);
+
+    expect(
+      await prisma.product.count({ where: { name: '저장되지 않을 상품' } }),
+    ).toBe(0);
+    expect(await prisma.product.count({ where: { sellerId: user.id } })).toBe(
+      1,
+    );
+  });
+
+  it('POST /products 상품 제한 직후 POST /articles -> 201', async () => {
+    const user = await createUniqueUser();
+
+    await postProduct(user, '첫 번째 제한 상품').expect(201);
+    await postProduct(user, '차단되는 두 번째 상품').expect(429);
+
+    const article = await request(app.getHttpServer())
+      .post('/articles')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ title: '별도 경로 글', content: '게시글 제한과 별개' })
+      .expect(201);
+
+    expect(article.body).toMatchObject({
+      title: '별도 경로 글',
       writer: { id: user.id },
     });
   });
