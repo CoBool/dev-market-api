@@ -5,6 +5,7 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { UserThrottlerGuard } from '../src/common/guards/user-throttler.guard.js';
+import { resetDatabase } from './helpers/db.js';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
@@ -51,9 +52,7 @@ describe('Auth (e2e)', () => {
   });
 
   beforeEach(async () => {
-    // 게시글이 사용자를 참조하므로 게시글 → 사용자 순서로 삭제
-    await prisma.article.deleteMany();
-    await prisma.user.deleteMany();
+    await resetDatabase(prisma);
   });
 
   afterAll(async () => {
