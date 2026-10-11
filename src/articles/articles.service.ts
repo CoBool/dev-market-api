@@ -15,6 +15,7 @@ import type {
   FindArticlesQueryDto,
 } from './dto/find-articles-query.dto.js';
 import { articleArgs, type ArticleWithWriter } from './articles.select.js';
+import { escapeLike } from '../common/utils/search.js';
 
 @Injectable()
 export class ArticlesService {
@@ -118,7 +119,7 @@ export class ArticlesService {
     // 검색어가 없으면 조건 없음 (전체 목록)
     if (!keyword) return {};
 
-    const escaped = keyword.replace(/[\\%_]/g, '\\$&');
+    const escaped = escapeLike(keyword);
 
     const conditions: Prisma.ArticleWhereInput[] = [];
 
