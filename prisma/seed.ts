@@ -4,22 +4,117 @@ import { PrismaClient } from '../src/generated/prisma/client.js';
 
 const PASSWORD = 'password1234';
 
+// 앞 SELLER_COUNT명은 판매자, 나머지는 구매자 (마지막은 수동 테스트용 계정)
 const SEED_USERS = [
   { email: 'frontend_sangmin@gmail.com', nickname: '코딩하는코기' },
   { email: 'dev.danielle@naver.com', nickname: '버그퇴치반' },
   { email: 'react_master99@kakao.com', nickname: '커밋장인' },
+  { email: 'refactor.lover@gmail.com', nickname: '리팩토링중' },
+  { email: 'type.script@naver.com', nickname: '타입스크립터' },
+  { email: 'lint_fairy@kakao.com', nickname: '린터요정' },
+  { email: 'deploy.god@gmail.com', nickname: '배포의신' },
+  { email: 'night_coder@naver.com', nickname: '야근하는곰' },
+  { email: 'query.master@kakao.com', nickname: '쿼리장인' },
+  { email: 'docker_whale@gmail.com', nickname: '도커고래' },
+  { email: 'git.branch@naver.com', nickname: '깃브랜치' },
+  { email: 'test_king@kakao.com', nickname: '테스트왕' },
+  { email: 'junior.front@gmail.com', nickname: '프론트신입' },
+  { email: 'backend.dream@naver.com', nickname: '백엔드꿈나무' },
+  { email: 'test@test.com', nickname: '테스트계정' },
 ];
 
+// 15명 × 0.7 = 10.5 → 70%를 넘지 않도록 내림 (판매자 10, 구매자 5)
+const SELLER_RATIO = 0.7;
+const SELLER_COUNT = Math.floor(SEED_USERS.length * SELLER_RATIO);
+
 const ARTICLE_TOPICS = [
-  '판다마켓 이용 후기',
-  'React 상태 관리 질문',
-  'NestJS 공부 기록',
-  '중고 거래 꿀팁',
-  '오늘의 판다 사진',
+  '개발 도구 구매 후기',
+  'NestJS 보일러플레이트 질문',
+  '코드 리뷰 요청',
+  '라이선스 문의',
+  '오늘의 개발 환경 공유',
 ];
 
 const ARTICLE_COUNT = 25;
 const FEATURED_COMMENT_COUNT = 18;
+
+// 원형 10개 × 에디션 5개 = 상품 50개
+const PRODUCT_TEMPLATES = [
+  {
+    name: 'NestJS 인증 보일러플레이트',
+    price: 29_000,
+    tags: ['nestjs', 'auth', 'boilerplate'],
+    description:
+      'JWT 로그인·토큰 갱신, 가드, DTO 검증이 갖춰진 NestJS 시작 템플릿입니다.',
+  },
+  {
+    name: 'React 어드민 대시보드',
+    price: 49_000,
+    tags: ['react', 'admin', 'dashboard'],
+    description:
+      '표, 차트, 사이드바 레이아웃이 포함된 관리자 화면 템플릿입니다.',
+  },
+  {
+    name: 'Prisma 스키마 모음',
+    price: 15_000,
+    tags: ['prisma', 'postgresql', 'schema'],
+    description:
+      '회원, 게시판, 주문 등 자주 쓰는 도메인의 Prisma 스키마 예제 모음입니다.',
+  },
+  {
+    name: 'Docker Compose 개발환경',
+    price: 9_000,
+    tags: ['docker', 'devops'],
+    description:
+      'DB, 캐시, 앱을 한 번에 띄우는 로컬 개발용 compose 설정입니다.',
+  },
+  {
+    name: 'oxlint 설정 팩',
+    price: 5_000,
+    tags: ['lint', 'oxlint', 'config'],
+    description:
+      'TypeScript 프로젝트에 바로 적용할 수 있는 린트 규칙 모음입니다.',
+  },
+  {
+    name: 'GitHub Actions CI 템플릿',
+    price: 12_000,
+    tags: ['ci', 'github-actions'],
+    description: '린트, 테스트, 빌드를 자동으로 돌리는 워크플로 템플릿입니다.',
+  },
+  {
+    name: 'VS Code 스니펫 패키지',
+    price: 7_000,
+    tags: ['vscode', 'snippet'],
+    description:
+      'NestJS, React에서 자주 쓰는 코드 조각을 단축키로 입력하는 스니펫입니다.',
+  },
+  {
+    name: 'REST API 테스트 스위트',
+    price: 35_000,
+    tags: ['test', 'e2e', 'vitest'],
+    description: 'supertest 기반 e2e 테스트 구조와 DB 초기화 헬퍼 예제입니다.',
+  },
+  {
+    name: 'Next.js 랜딩 UI 킷',
+    price: 39_000,
+    tags: ['nextjs', 'ui', 'landing'],
+    description:
+      '히어로, 가격표, FAQ 섹션을 조합해 쓰는 랜딩 페이지 컴포넌트 모음입니다.',
+  },
+  {
+    name: 'CLI 도구 스캐폴딩',
+    price: 19_000,
+    tags: ['cli', 'node', 'scaffold'],
+    description:
+      'Node.js CLI 프로젝트의 명령어 구조와 빌드 설정을 갖춘 시작 코드입니다.',
+  },
+] as const;
+
+const PRODUCT_EDITIONS = ['Lite', 'Starter', 'Pro', 'Team', 'Max'] as const;
+const PRODUCT_COUNT = 50;
+
+// 같은 시드면 항상 같은 판매자 분배가 나오도록 고정
+const RANDOM_SEED = 20261011;
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -37,21 +132,40 @@ const prisma = new PrismaClient({
 
 function pick<T>(list: readonly T[], i: number): T {
   const item = list[i % list.length];
-  if (item === undefined) throw new Error('빈 배열에서 고를 수 없습니다.')
+  if (item === undefined) throw new Error('빈 배열에서 고를 수 없습니다.');
 
   return item;
 }
 
+// mulberry32: 0 이상 1 미만의 재현 가능한 난수 생성기
+function createRandom(seed: number): () => number {
+  let state = seed >>> 0;
+
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 async function main() {
+  // 외래 키 참조를 제거하기 위해 댓글 → 게시글 → 상품 → 사용자 순서로 삭제
   await prisma.articleComment.deleteMany();
   await prisma.article.deleteMany();
+  await prisma.product.deleteMany();
   await prisma.user.deleteMany();
 
   const passwordHash = await hash(PASSWORD, 10);
 
   const users = await prisma.user.createManyAndReturn({
-    data: SEED_USERS.map((user) => ({ ...user, passwordHash }))
+    data: SEED_USERS.map((user) => ({ ...user, passwordHash })),
   });
+
+  const sellers = users.slice(0, SELLER_COUNT);
+  const buyers = users.slice(SELLER_COUNT);
 
   const articles = await prisma.article.createManyAndReturn({
     data: Array.from({ length: ARTICLE_COUNT }, (_, i) => {
@@ -61,8 +175,8 @@ async function main() {
         title: `${topic}.#${i + 1}`,
         content: `${topic}에 대한 ${i + 1}번째 글입니다.`,
         writerId: pick(users, i).id,
-      }
-    })
+      };
+    }),
   });
 
   const featured = articles.at(-1);
@@ -74,7 +188,7 @@ async function main() {
       content: `${i + 1}번째 댓글입니다.`,
       articleId: featured.id,
       writerId: pick(users, i).id,
-    })
+    }),
   );
 
   const otherComments = articles.slice(-4, -1).flatMap((article, i) => [
@@ -87,24 +201,46 @@ async function main() {
       content: '정리 잘 해 주셨네요!',
       articleId: article.id,
       writerId: pick(users, i + 2).id,
-    }
+    },
   ]);
 
   const { count: commentCount } = await prisma.articleComment.createMany({
-    data: [...featuredComments, ...otherComments]
+    data: [...featuredComments, ...otherComments],
+  });
+
+  const random = createRandom(RANDOM_SEED);
+
+  const { count: productCount } = await prisma.product.createMany({
+    data: Array.from({ length: PRODUCT_COUNT }, (_, i) => {
+      const template = pick(PRODUCT_TEMPLATES, i);
+      const editionIndex = Math.floor(i / PRODUCT_TEMPLATES.length);
+
+      // 앞 판매자 수만큼은 1명당 1개씩 배정해 모든 판매자가 상품을 갖게 하고,
+      // 나머지는 시드 랜덤으로 배정
+      const seller =
+        i < sellers.length
+          ? pick(sellers, i)
+          : pick(sellers, Math.floor(random() * sellers.length));
+
+      return {
+        name: `${template.name} ${pick(PRODUCT_EDITIONS, editionIndex)}`,
+        description: template.description,
+        price: template.price * (editionIndex + 1),
+        tags: [...template.tags],
+        sellerId: seller.id,
+      };
+    }),
   });
 
   console.log(
-    `seed 완료 : 사용자 ${users.length}, 게시글 ${articles.length}, 댓글 ${commentCount}`
+    `seed 완료 : 사용자 ${users.length}(판매자 ${sellers.length}, 구매자 ${buyers.length}), 게시글 ${articles.length}, 댓글 ${commentCount}, 상품 ${productCount}`,
   );
 
   console.log(
-    `로그인 : ${SEED_USERS.map((u) => u.email).join(', ')} / ${PASSWORD}`
+    `로그인 : ${SEED_USERS.map((u) => u.email).join(', ')} / ${PASSWORD}`,
   );
 
-  console.log(
-    `댓글이 많은 게시글 : id ${featured.id}`
-  );
+  console.log(`댓글이 많은 게시글 : id ${featured.id}`);
 }
 
 try {
