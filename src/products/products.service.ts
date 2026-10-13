@@ -1,11 +1,48 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
-import { productArgs, type ProductWithSeller } from './products.select.js';
+import {
+  productArgs,
+  productListArgs,
+  type ProductWithSeller,
+  type ProductListItem,
+} from './products.select.js';
+import { FindProductsQueryDto } from './dto/find-products-query.dto.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import { escapeLike } from '../common/utils/search.js';
+import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
+import type { Paginated } from '../common/interfaces/paginated.interface.js';
 
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(
+    query: FindProductsQueryDto,
+  ): Promise<Paginated<ProductListItem>> {
+    const where = this.buildSearchWhere(query.keyword);
+
+    const totalCount = await this.prisma.product.count({ where });
+    const meta = buildPageMeta(query, totalCount);
+
+    if (query.page > meta.totalPages) {
+      return { items: [], meta };
+    }
+
+    const { skip, take } = getSkipTake(query);
+
+    const items = await this.prisma.product.findMany({
+      where,
+      orderBy: {
+        id: 'desc',
+      },
+      skip,
+      take,
+      ...productListArgs,
+    });
+
+    return { items, meta };
+  }
 
   async create(
     createProductDto: CreateProductDto,
@@ -17,5 +54,20 @@ export class ProductsService {
       data: { name, description, price, tags, sellerId },
       ...productArgs,
     });
+  }
+
+  private buildSearchWhere(
+    keyword: string | undefined,
+  ): Prisma.ProductWhereInput {
+    if (!keyword) return {};
+
+    const escaped = escapeLike(keyword);
+
+    return {
+      OR: [
+        { name: { contains: escaped, mode: 'insensitive' } },
+        { description: { contains: escaped, mode: 'insensitive' } },
+      ],
+    };
   }
 }
