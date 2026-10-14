@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,6 +21,7 @@ import { Public } from '../auth/decorators/public.decorator.js';
 import { FindProductsQueryDto } from './dto/find-products-query.dto.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { IdParamDto } from '../common/dto/id-param.dto.js';
+import { UpdateProductDto } from './dto/update-product.dto.js';
 
 @Controller('products')
 export class ProductsController {
@@ -45,5 +49,23 @@ export class ProductsController {
     @CurrentUser() user: AuthUser,
   ): Promise<ProductWithSeller> {
     return this.productsService.create(createProductDto, user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param() { id }: IdParamDto,
+    @Body() updateProductDto: UpdateProductDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ProductWithSeller> {
+    return this.productsService.update(id, updateProductDto, user.id);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(
+    @Param() { id }: IdParamDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<void> {
+    return this.productsService.remove(id, user.id);
   }
 }
