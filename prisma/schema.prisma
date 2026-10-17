@@ -52,9 +52,25 @@ model Product {
   updatedAt   DateTime @updatedAt
 
   sellerId Int
-  seller   User   @relation(fields: [sellerId], references: [id])
+  seller   User             @relation(fields: [sellerId], references: [id])
+  comments ProductComment[]
 
   @@index([sellerId, id])
+}
+
+model ProductComment {
+  id        Int      @id @default(autoincrement())
+  content   String   @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  writerId  Int
+  writer    User    @relation(fields: [writerId], references: [id])
+
+  @@index([productId, id])
+  @@index([writerId])
 }
 
 model User {
@@ -69,4 +85,5 @@ model User {
   articles        Article[]
   articleComments ArticleComment[]
   products        Product[]
+  productComments ProductComment[]
 }
