@@ -1,12 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CursorPaginationQueryDto } from '../../common/dto/cursor-pagination-query.dto.js';
-import { CursorPaginated } from '../../common/interfaces/cursor-paginated.interface.js';
+import type { CursorPaginated } from '../../common/interfaces/cursor-paginated.interface.js';
 import {
   productCommentArgs,
   type ProductCommentWithWriter,
 } from './product-comments.select.js';
 import { CreateProductCommentDto } from './dto/create-product-comment.dto.js';
+import { UpdateProductCommentDto } from './dto/update-product-comment.dto.js';
 
 @Injectable()
 export class ProductCommentsService {
@@ -19,6 +24,23 @@ export class ProductCommentsService {
     });
 
     if (!product) throw new NotFoundException('상품을 찾을 수 없습니다.');
+  }
+
+  private async findOwnedComment(
+    id: number,
+    userId: number,
+    action: '수정' | '삭제',
+  ): Promise<void> {
+    const comment = await this.prisma.productComment.findUnique({
+      where: { id },
+      select: { writerId: true },
+    });
+
+    if (!comment) throw new NotFoundException('댓글을 찾을 수 없습니다.');
+
+    if (comment.writerId !== userId) {
+      throw new ForbiddenException(`작성자만 ${action}할 수 있습니다.`);
+    }
   }
 
   async findAll(
@@ -60,6 +82,30 @@ export class ProductCommentsService {
     return this.prisma.productComment.create({
       data: { content, productId, writerId },
       ...productCommentArgs,
+    });
+  }
+
+  async update(
+    id: number,
+    updateProductCommentDto: UpdateProductCommentDto,
+    userId: number,
+  ): Promise<ProductCommentWithWriter> {
+    await this.findOwnedComment(id, userId, '수정');
+
+    const { content } = updateProductCommentDto;
+
+    return this.prisma.productComment.update({
+      where: { id },
+      data: { content },
+      ...productCommentArgs,
+    });
+  }
+
+  async remove(id: number, userId: number): Promise<void> {
+    await this.findOwnedComment(id, userId, '삭제');
+
+    await this.prisma.productComment.delete({
+      where: { id },
     });
   }
 }

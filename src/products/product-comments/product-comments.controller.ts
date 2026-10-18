@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,6 +21,7 @@ import { Throttle } from '@nestjs/throttler';
 import { CreateProductCommentDto } from './dto/create-product-comment.dto.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../auth/interfaces/auth-user.interface.js';
+import { UpdateProductCommentDto } from './dto/update-product-comment.dto.js';
 
 @Controller()
 export class ProductCommentsController {
@@ -47,5 +51,27 @@ export class ProductCommentsController {
       createProductCommentDto,
       user.id,
     );
+  }
+
+  @Patch('product-comments/:id')
+  update(
+    @Param() { id }: IdParamDto,
+    @Body() updateProductCommentDto: UpdateProductCommentDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ProductCommentWithWriter> {
+    return this.productCommentsService.update(
+      id,
+      updateProductCommentDto,
+      user.id,
+    );
+  }
+
+  @Delete('product-comments/:id')
+  @HttpCode(204)
+  remove(
+    @Param() { id }: IdParamDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<void> {
+    return this.productCommentsService.remove(id, user.id);
   }
 }
