@@ -49,6 +49,30 @@ describe('Throttle (e2e)', () => {
     });
   }
 
+  // 상품 댓글 제한 테스트용 상품은 API 제한 횟수를 소비하지 않도록 DB에 직접 준비
+  async function createProduct(sellerId: number) {
+    return prisma.product.create({
+      data: {
+        name: '댓글 제한 테스트 상품',
+        description: '상품 설명',
+        price: 1000,
+        tags: ['test'],
+        sellerId,
+      },
+    });
+  }
+
+  function postProductComment(
+    productId: number,
+    user: { id: number; accessToken: string },
+    content: string,
+  ) {
+    return request(app.getHttpServer())
+      .post(`/products/${productId}/comments`)
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ content });
+  }
+
   function postComment(
     articleId: number,
     user: { id: number; accessToken: string },
@@ -489,6 +513,77 @@ describe('Throttle (e2e)', () => {
 
     expect(article.body).toMatchObject({
       title: '별도 경로 글',
+      writer: { id: user.id },
+    });
+  });
+
+  it('POST /products/:id/comments 같은 사용자가 3회 작성 후 4회째 -> 201, 429', async () => {
+    const user = await createUniqueUser();
+    const product = await createProduct(user.id);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postProductComment(product.id, user, `상품 댓글 ${attempt}`).expect(
+        201,
+      );
+    }
+    const blocked = await postProductComment(
+      product.id,
+      user,
+      '네 번째 댓글',
+    ).expect(429);
+    expect(blocked.body.message).toEqual(
+      'ThrottlerException: Too Many Requests',
+    );
+    expect(
+      await prisma.productComment.count({
+        where: {
+          productId: product.id,
+          writerId: user.id,
+          content: '네 번째 댓글',
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('POST /products/:id/comments A가 제한된 직후 B가 같은 상품에 작성 -> 201', async () => {
+    const userA = await createUniqueUser();
+    const userB = await createUniqueUser();
+    const product = await createProduct(userA.id);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postProductComment(product.id, userA, `A의 댓글 ${attempt}`).expect(
+        201,
+      );
+    }
+    await postProductComment(product.id, userA, 'A의 차단 댓글').expect(429);
+    const res = await postProductComment(product.id, userB, 'B의 댓글').expect(
+      201,
+    );
+    expect(res.body).toMatchObject({
+      content: 'B의 댓글',
+      productId: product.id,
+      writer: { id: userB.id },
+    });
+  });
+
+  it('POST /products/:id/comments 제한 초과 후 POST /articles/:id/comments -> 201', async () => {
+    const user = await createUniqueUser();
+    const product = await createProduct(user.id);
+    const article = await createArticle(user.id);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await postProductComment(product.id, user, `상품 댓글 ${attempt}`).expect(
+        201,
+      );
+    }
+    await postProductComment(product.id, user, '차단되는 네 번째 댓글').expect(
+      429,
+    );
+    const res = await postComment(
+      article.id,
+      user,
+      '게시글 댓글은 별도 제한',
+    ).expect(201);
+    expect(res.body).toMatchObject({
+      content: '게시글 댓글은 별도 제한',
+      articleId: article.id,
       writer: { id: user.id },
     });
   });
