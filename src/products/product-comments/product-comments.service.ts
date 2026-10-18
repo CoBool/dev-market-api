@@ -10,7 +10,7 @@ import { CreateProductCommentDto } from './dto/create-product-comment.dto.js';
 
 @Injectable()
 export class ProductCommentsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async ensureProductExists(productId: number): Promise<void> {
     const product = await this.prisma.product.findUnique({

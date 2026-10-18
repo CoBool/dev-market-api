@@ -23,7 +23,7 @@ import type { AuthUser } from '../../auth/interfaces/auth-user.interface.js';
 export class ProductCommentsController {
   constructor(
     private readonly productCommentsService: ProductCommentsService,
-  ) { }
+  ) {}
 
   @Get('products/:id/comments')
   @Public()
