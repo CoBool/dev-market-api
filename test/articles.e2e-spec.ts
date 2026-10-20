@@ -1,11 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { UserThrottlerGuard } from '../src/common/guards/user-throttler.guard.js';
 import { resetDatabase } from './helpers/db.js';
+import { createTestUser } from './helpers/users.js';
 
 describe('Articles (e2e)', () => {
   let app: INestApplication<App>;
@@ -587,7 +590,181 @@ describe('Articles (e2e)', () => {
       .get(`/articles/${created.body.id}`)
       .expect(200);
 
-    expect(res.body).toEqual(created.body);
+    expect(res.body).toEqual({ ...created.body, isLiked: false });
+  });
+
+  describe('GET /articles/:id 선택적 인증과 isLiked', () => {
+    let viewer: { id: number; accessToken: string };
+    let otherUser: { id: number; accessToken: string };
+    let article: { id: number };
+
+    beforeAll(async () => {
+      viewer = await createTestUser(app, {
+        email: 'articles-optional-viewer@test.com',
+        nickname: '선택인증조회자',
+      });
+      otherUser = await createTestUser(app, {
+        email: 'articles-optional-other@test.com',
+        nickname: '선택인증타인',
+      });
+    });
+
+    beforeEach(async () => {
+      article = await prisma.article.create({
+        data: {
+          title: '선택적 인증 대상 글',
+          content: '좋아요 여부 확인',
+          writerId: userA.id,
+        },
+      });
+    });
+
+    it('GET /articles/:id 비회원 상세 조회 시 likes가 없어도 isLiked false -> 200', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .expect(200);
+
+      expect(res.body.isLiked).toBe(false);
+    });
+
+    it('GET /articles/:id 회원이 좋아요하지 않은 글은 isLiked false -> 200', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .expect(200);
+
+      expect(res.body.isLiked).toBe(false);
+    });
+
+    it('GET /articles/:id 회원이 좋아요한 글은 isLiked true -> 200', async () => {
+      await prisma.articleLike.create({
+        data: { userId: viewer.id, articleId: article.id },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .expect(200);
+
+      expect(res.body.isLiked).toBe(true);
+    });
+
+    it('GET /articles/:id 다른 사용자만 좋아요한 글은 isLiked false -> 200', async () => {
+      await prisma.articleLike.create({
+        data: { userId: otherUser.id, articleId: article.id },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .expect(200);
+
+      expect(res.body.isLiked).toBe(false);
+    });
+
+    it('GET /articles/:id 상세 응답 키가 정확하고 writerId와 likes 제외 -> 200', async () => {
+      await prisma.articleLike.create({
+        data: { userId: viewer.id, articleId: article.id },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .expect(200);
+
+      expect(Object.keys(res.body).sort()).toEqual(
+        [
+          'id',
+          'title',
+          'content',
+          'createdAt',
+          'updatedAt',
+          'likeCount',
+          'writer',
+          'isLiked',
+        ].sort(),
+      );
+      expect(res.body.writer).toEqual({ id: userA.id, nickname: 'userA' });
+      expect(res.body).not.toHaveProperty('writerId');
+      expect(res.body).not.toHaveProperty('likes');
+    });
+
+    it.each(['Basic abc', 'Bearer'])(
+      'GET /articles/:id 토큰 형식 오류(%s) -> 401',
+      async (authorization) => {
+        const res = await request(app.getHttpServer())
+          .get(`/articles/${article.id}`)
+          .set('Authorization', authorization)
+          .expect(401);
+
+        expect(res.body.message).toBe('로그인이 필요합니다.');
+      },
+    );
+
+    it('GET /articles/:id JWT가 아닌 토큰 -> 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', 'Bearer not-a-jwt')
+        .expect(401);
+
+      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
+    });
+
+    it('GET /articles/:id 다른 secret으로 서명한 토큰 -> 401', async () => {
+      const secret = app
+        .get(ConfigService)
+        .getOrThrow<string>('JWT_ACCESS_SECRET');
+      const token = await app
+        .get(JwtService)
+        .signAsync(
+          { sub: viewer.id },
+          { secret: `${secret}-different`, expiresIn: '15m' },
+        );
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+
+      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
+    });
+
+    it('GET /articles/:id 만료된 토큰 -> 401', async () => {
+      const secret = app
+        .get(ConfigService)
+        .getOrThrow<string>('JWT_ACCESS_SECRET');
+      const token = await app
+        .get(JwtService)
+        .signAsync(
+          { sub: viewer.id, exp: Math.floor(Date.now() / 1000) - 60 },
+          { secret },
+        );
+
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+
+      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
+    });
+
+    it('GET /articles/:id 빈 Authorization 헤더 -> 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', '')
+        .expect(401);
+
+      expect(res.body.message).toBe('로그인이 필요합니다.');
+    });
+
+    it('GET /articles/:id 없는 글을 회원이 조회 -> 404', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/articles/${article.id + 1000}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .expect(404);
+
+      expect(res.body.message).toBe('게시글을 찾을 수 없습니다.');
+    });
   });
 
   it('GET /articles/:id 존재하지 않는 글 -> 404', async () => {
@@ -682,7 +859,7 @@ describe('Articles (e2e)', () => {
       .get(`/articles/${created.body.id}`)
       .expect(200);
 
-    expect(updated.body).toEqual(res.body);
+    expect(updated.body).toEqual({ ...res.body, isLiked: false });
   });
 
   it('PATCH /articles/:id 존재하지 않는 글 -> 404', async () => {
