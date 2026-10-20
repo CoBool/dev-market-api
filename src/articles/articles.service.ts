@@ -14,12 +14,12 @@ import type {
   ArticleSearchType,
   FindArticlesQueryDto,
 } from './dto/find-articles-query.dto.js';
-import { articleArgs, type ArticleWithWriter } from './articles.select.js';
+import { articleArgs, type ArticleDetail, type ArticleWithWriter } from './articles.select.js';
 import { escapeLike } from '../common/utils/search.js';
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async findOwnedArticle(
     id: number,
@@ -64,15 +64,21 @@ export class ArticlesService {
     return { items, meta };
   }
 
-  async findOne(id: number): Promise<ArticleWithWriter> {
+  async findOne(id: number, userId?: number): Promise<ArticleDetail> {
     const article = await this.prisma.article.findUnique({
       where: { id },
-      ...articleArgs,
+      include: {
+        ...articleArgs.include,
+        likes: userId ? { where: { userId }, select: { userId: true } } : false,
+      },
+      omit: articleArgs.omit,
     });
 
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
-    return article;
+    const { likes, ...rest } = article;
+
+    return { ...rest, isLiked: userId ? likes.length > 0 : false };
   }
 
   async create(

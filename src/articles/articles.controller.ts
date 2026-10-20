@@ -21,12 +21,13 @@ import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { FindArticlesQueryDto } from './dto/find-articles-query.dto.js';
 import { IdParamDto } from '../common/dto/id-param.dto.js';
-import type { ArticleWithWriter } from './articles.select.js';
+import type { ArticleDetail, ArticleWithWriter } from './articles.select.js';
 import { Public } from '../auth/decorators/public.decorator.js';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 
 @Controller('articles')
 export class ArticlesController {
-  constructor(private readonly articlesService: ArticlesService) {}
+  constructor(private readonly articlesService: ArticlesService) { }
 
   @Get()
   @Public()
@@ -37,9 +38,12 @@ export class ArticlesController {
   }
 
   @Get(':id')
-  @Public()
-  findOne(@Param() { id }: IdParamDto): Promise<ArticleWithWriter> {
-    return this.articlesService.findOne(id);
+  @OptionalAuth()
+  findOne(
+    @Param() { id }: IdParamDto,
+    @CurrentUser() user?: AuthUser,
+  ): Promise<ArticleDetail> {
+    return this.articlesService.findOne(id, user?.id);
   }
 
   @Post()
