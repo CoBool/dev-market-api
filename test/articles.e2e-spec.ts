@@ -1170,6 +1170,66 @@ describe('Articles (e2e)', () => {
       ).toBe(1);
     });
 
+    it('POST /articles/:id/like 좋아요로 게시글 updatedAt은 바뀌지 않음 -> 201', async () => {
+      const article = await createArticle();
+      const before = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const res = await postLike(article.id, userA.accessToken).expect(201);
+      const after = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+
+      expect(res.body.updatedAt).toBe(before.updatedAt.toISOString());
+      expect(after.updatedAt.toISOString()).toBe(
+        before.updatedAt.toISOString(),
+      );
+    });
+
+    it('DELETE /articles/:id/like 취소로 게시글 updatedAt은 바뀌지 않음 -> 200', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+      const before = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const res = await deleteLike(article.id, userA.accessToken).expect(200);
+      const after = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+
+      expect(res.body.updatedAt).toBe(before.updatedAt.toISOString());
+      expect(after.updatedAt.toISOString()).toBe(
+        before.updatedAt.toISOString(),
+      );
+    });
+
+    it('PATCH /articles/:id 좋아요 후 게시글을 수정하면 updatedAt 변경 -> 200', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+      const before = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const res = await request(app.getHttpServer())
+        .patch(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .send({ title: '좋아요 후 수정한 제목' })
+        .expect(200);
+      const after = await prisma.article.findUniqueOrThrow({
+        where: { id: article.id },
+      });
+
+      expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(
+        before.updatedAt.getTime(),
+      );
+      expect(after.updatedAt.toISOString()).toBe(res.body.updatedAt);
+    });
+
     it('DELETE /articles/:id/like 좋아요하지 않은 글 취소 -> 409와 DB 변화 없음', async () => {
       const article = await createArticle();
 
