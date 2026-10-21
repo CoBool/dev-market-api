@@ -24,7 +24,7 @@ import { escapeLike } from '../common/utils/search.js';
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async findOwnedArticle(
     id: number,
@@ -128,10 +128,11 @@ export class ArticlesService {
       const article = await this.prisma.$transaction(async (tx) => {
         const existing = await tx.article.findUnique({
           where: { id },
-          select: { id: true }
+          select: { id: true },
         });
 
-        if (!existing) throw new NotFoundException('게시글을 찾을 수 없습니다.');
+        if (!existing)
+          throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
         await tx.articleLike.create({ data: { userId, articleId: id } });
 
@@ -161,7 +162,7 @@ export class ArticlesService {
     const article = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.article.findUnique({
         where: { id },
-        select: { id: true }
+        select: { id: true },
       });
 
       if (!existing) throw new NotFoundException('게시글을 찾을 수 없습니다.');
