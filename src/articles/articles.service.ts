@@ -24,7 +24,7 @@ import { escapeLike } from '../common/utils/search.js';
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async findOwnedArticle(
     id: number,
@@ -126,25 +126,18 @@ export class ArticlesService {
   async like(id: number, userId: number): Promise<ArticleDetail> {
     try {
       const article = await this.prisma.$transaction(async (tx) => {
-        const locked = await tx.$queryRaw<{ id: number }[]>`
-          SELECT id
-          FROM "Article"
-          WHERE id = ${id}
-          FOR UPDATE
-        `;
+        const existing = await tx.article.findUnique({
+          where: { id },
+          select: { id: true }
+        });
 
-        if (locked.length === 0)
-          throw new NotFoundException('게시글을 찾을 수 없습니다.');
+        if (!existing) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
         await tx.articleLike.create({ data: { userId, articleId: id } });
 
-        const likeCount = await tx.articleLike.count({
-          where: { articleId: id },
-        });
-
         return tx.article.update({
           where: { id },
-          data: { likeCount },
+          data: { likeCount: { increment: 1 } },
           ...articleArgs,
         });
       });
@@ -166,15 +159,12 @@ export class ArticlesService {
 
   async unlike(id: number, userId: number): Promise<ArticleDetail> {
     const article = await this.prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: number }[]>`
-          SELECT id
-          FROM "Article"
-          WHERE id = ${id}
-          FOR UPDATE
-        `;
+      const existing = await tx.article.findUnique({
+        where: { id },
+        select: { id: true }
+      });
 
-      if (locked.length === 0)
-        throw new NotFoundException('게시글을 찾을 수 없습니다.');
+      if (!existing) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
       const { count } = await tx.articleLike.deleteMany({
         where: { userId, articleId: id },
@@ -183,13 +173,9 @@ export class ArticlesService {
       if (count === 0)
         throw new ConflictException('좋아요하지 않은 게시글입니다.');
 
-      const likeCount = await tx.articleLike.count({
-        where: { articleId: id },
-      });
-
       return tx.article.update({
         where: { id },
-        data: { likeCount },
+        data: { likeCount: { decrement: 1 } },
         ...articleArgs,
       });
     });
