@@ -1036,4 +1036,321 @@ describe('Articles (e2e)', () => {
       .get(`/articles/${created.body.id}`)
       .expect(200);
   });
+
+  describe('POST /articles/:id/like 및 DELETE /articles/:id/like', () => {
+    async function createArticle() {
+      return prisma.article.create({
+        data: {
+          title: '좋아요 테스트 글',
+          content: '좋아요 동작 확인',
+          writerId: userA.id,
+        },
+      });
+    }
+
+    function postLike(articleId: string | number, token?: string) {
+      const req = request(app.getHttpServer()).post(
+        `/articles/${encodeURIComponent(String(articleId))}/like`,
+      );
+      if (token) req.set('Authorization', `Bearer ${token}`);
+      return req;
+    }
+
+    function deleteLike(articleId: string | number, token?: string) {
+      const req = request(app.getHttpServer()).delete(
+        `/articles/${encodeURIComponent(String(articleId))}/like`,
+      );
+      if (token) req.set('Authorization', `Bearer ${token}`);
+      return req;
+    }
+
+    function expectLikeResponseKeys(body: Record<string, unknown>) {
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'id',
+          'title',
+          'content',
+          'createdAt',
+          'updatedAt',
+          'likeCount',
+          'writer',
+          'isLiked',
+        ].sort(),
+      );
+      expect(body).not.toHaveProperty('writerId');
+      expect(body).not.toHaveProperty('likes');
+    }
+
+    it('POST /articles/:id/like 좋아요 -> 201, 행과 likeCount 저장', async () => {
+      const article = await createArticle();
+
+      const res = await postLike(article.id, userA.accessToken).expect(201);
+
+      expectLikeResponseKeys(res.body);
+      expect(res.body).toMatchObject({
+        id: article.id,
+        isLiked: true,
+        likeCount: 1,
+      });
+      expect(
+        await prisma.articleLike.findUnique({
+          where: {
+            userId_articleId: { userId: userA.id, articleId: article.id },
+          },
+        }),
+      ).not.toBeNull();
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(1);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(1);
+    });
+
+    it('POST /articles/:id/like 이미 좋아요한 글에 다시 요청 -> 409와 DB 변화 없음', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+
+      const res = await postLike(article.id, userA.accessToken).expect(409);
+
+      expect(res.body.message).toBe('이미 좋아요한 게시글입니다.');
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(1);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(1);
+    });
+
+    it('POST /articles/:id/like 다른 사용자가 좋아요 -> 201과 likeCount 2', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+
+      const res = await postLike(article.id, userB.accessToken).expect(201);
+
+      expect(res.body.isLiked).toBe(true);
+      expect(res.body.likeCount).toBe(2);
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(2);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(2);
+    });
+
+    it('DELETE /articles/:id/like 좋아요 취소 -> 200, 행 삭제와 likeCount 감소', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+      await postLike(article.id, userB.accessToken).expect(201);
+
+      const res = await deleteLike(article.id, userA.accessToken).expect(200);
+
+      expectLikeResponseKeys(res.body);
+      expect(res.body).toMatchObject({
+        id: article.id,
+        isLiked: false,
+        likeCount: 1,
+      });
+      expect(
+        await prisma.articleLike.findUnique({
+          where: {
+            userId_articleId: { userId: userA.id, articleId: article.id },
+          },
+        }),
+      ).toBeNull();
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(1);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(1);
+    });
+
+    it('DELETE /articles/:id/like 좋아요하지 않은 글 취소 -> 409와 DB 변화 없음', async () => {
+      const article = await createArticle();
+
+      const res = await deleteLike(article.id, userA.accessToken).expect(409);
+
+      expect(res.body.message).toBe('좋아요하지 않은 게시글입니다.');
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(0);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(0);
+    });
+
+    it('DELETE /articles/:id/like 내 좋아요 취소 후 다른 사용자의 행은 유지 -> 200', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+      await postLike(article.id, userB.accessToken).expect(201);
+
+      await deleteLike(article.id, userA.accessToken).expect(200);
+
+      expect(
+        await prisma.articleLike.findUnique({
+          where: {
+            userId_articleId: { userId: userB.id, articleId: article.id },
+          },
+        }),
+      ).not.toBeNull();
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(1);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(1);
+    });
+
+    it('GET /articles/:id 좋아요 후 회원과 비회원 상세 조회 -> 200', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+
+      const memberRes = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+      const guestRes = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .expect(200);
+
+      expect(memberRes.body).toMatchObject({ isLiked: true, likeCount: 1 });
+      expect(guestRes.body).toMatchObject({ isLiked: false, likeCount: 1 });
+    });
+
+    it('GET /articles 목록 항목에 likeCount가 있고 isLiked는 없음 -> 200', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get('/articles')
+        .expect(200);
+      const item = res.body.items.find(
+        (candidate: { id: number }) => candidate.id === article.id,
+      );
+
+      expect(item).toHaveProperty('likeCount', 1);
+      expect(item).not.toHaveProperty('isLiked');
+    });
+
+    it.each([
+      ['POST /articles/:id/like', (id: number) => postLike(id)],
+      ['DELETE /articles/:id/like', (id: number) => deleteLike(id)],
+    ])('%s 토큰 없이 요청 -> 401, DB 변화 없음', async (_path, makeRequest) => {
+      const article = await createArticle();
+
+      await makeRequest(article.id).expect(401);
+
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(0);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(0);
+    });
+
+    it.each([
+      [
+        'POST /articles/:id/like',
+        (id: number) => postLike(id, userA.accessToken),
+      ],
+      [
+        'DELETE /articles/:id/like',
+        (id: number) => deleteLike(id, userA.accessToken),
+      ],
+    ])('%s 없는 게시글 -> 404', async (_path, makeRequest) => {
+      const res = await makeRequest(999999).expect(404);
+
+      expect(res.body.message).toBe('게시글을 찾을 수 없습니다.');
+    });
+
+    it.each(['0', 'abc'])(
+      'POST /articles/:id/like 잘못된 id(%s) -> 400',
+      async (id) => {
+        await postLike(id, userA.accessToken).expect(400);
+      },
+    );
+
+    it.each(['0', 'abc'])(
+      'DELETE /articles/:id/like 잘못된 id(%s) -> 400',
+      async (id) => {
+        await deleteLike(id, userA.accessToken).expect(400);
+      },
+    );
+
+    it('DELETE /articles/:id 좋아요가 있는 게시글 삭제 -> 좋아요 행도 Cascade 삭제 204', async () => {
+      const article = await createArticle();
+      await postLike(article.id, userA.accessToken).expect(201);
+      await postLike(article.id, userB.accessToken).expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(204);
+
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(0);
+    });
+
+    it('POST /articles/:id/like 서로 다른 사용자 10명이 동시에 좋아요 -> 회차마다 10개와 likeCount 10', async () => {
+      for (let round = 1; round <= 5; round += 1) {
+        const article = await createArticle();
+        const users = await Promise.all(
+          Array.from({ length: 10 }, (_, index) =>
+            createTestUser(app, {
+              email: `articles-like-r${round}-u${index}@test.com`,
+              nickname: `동시성${round}${index}`,
+            }),
+          ),
+        );
+
+        const responses = await Promise.all(
+          users.map((user) => postLike(article.id, user.accessToken)),
+        );
+
+        for (const response of responses) {
+          expect(response.status, `회차 ${round}: 좋아요 요청 상태`).toBe(201);
+        }
+        const likeRows = await prisma.articleLike.count({
+          where: { articleId: article.id },
+        });
+        const savedArticle = await prisma.article.findUniqueOrThrow({
+          where: { id: article.id },
+        });
+        expect(likeRows, `회차 ${round}: ArticleLike 행 수`).toBe(10);
+        expect(savedArticle.likeCount, `회차 ${round}: Article.likeCount`).toBe(
+          10,
+        );
+      }
+    });
+
+    it('POST /articles/:id/like 같은 사용자가 동시에 5번 좋아요 -> 201 한 개, 409 네 개', async () => {
+      const article = await createArticle();
+
+      const responses = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          postLike(article.id, userA.accessToken),
+        ),
+      );
+
+      expect(
+        responses.map((response) => response.status).sort((a, b) => a - b),
+      ).toEqual([201, 409, 409, 409, 409]);
+      expect(
+        await prisma.articleLike.count({ where: { articleId: article.id } }),
+      ).toBe(1);
+      expect(
+        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
+          .likeCount,
+      ).toBe(1);
+    });
+  });
 });
