@@ -27,7 +27,7 @@ import { OptionalAuth } from '../auth/decorators/optional-auth.decorator.js';
 
 @Controller('articles')
 export class ArticlesController {
-  constructor(private readonly articlesService: ArticlesService) { }
+  constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
   @Public()
@@ -72,5 +72,22 @@ export class ArticlesController {
     @CurrentUser() user: AuthUser,
   ): Promise<void> {
     return this.articlesService.remove(id, user.id);
+  }
+
+  @Post(':id/like')
+  like(
+    @Param() { id }: IdParamDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ArticleDetail> {
+    return this.articlesService.like(id, user.id);
+  }
+
+  @Delete(':id/like')
+  @HttpCode(200)
+  unlike(
+    @Param() { id }: IdParamDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ArticleDetail> {
+    return this.articlesService.unlike(id, user.id);
   }
 }
