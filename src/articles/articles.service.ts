@@ -24,7 +24,7 @@ import { escapeLike } from '../common/utils/search.js';
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async findOwnedArticle(
     id: number,
@@ -126,19 +126,23 @@ export class ArticlesService {
   async like(id: number, userId: number): Promise<ArticleDetail> {
     try {
       const article = await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.article.findUnique({
-          where: { id },
-          select: { id: true },
-        });
 
-        if (!existing)
+        const [locked] = await tx.$queryRaw<{ id: number, updatedAt: Date }[]>`
+          SELECT id, "updatedAt"
+          FROM "Article"
+          WHERE id = ${id}
+          FOR UPDATE
+        `;
+
+        if (!locked) {
           throw new NotFoundException('게시글을 찾을 수 없습니다.');
+        }
 
         await tx.articleLike.create({ data: { userId, articleId: id } });
 
         return tx.article.update({
           where: { id },
-          data: { likeCount: { increment: 1 } },
+          data: { likeCount: { increment: 1 }, updatedAt: locked.updatedAt },
           ...articleArgs,
         });
       });
@@ -160,12 +164,16 @@ export class ArticlesService {
 
   async unlike(id: number, userId: number): Promise<ArticleDetail> {
     const article = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.article.findUnique({
-        where: { id },
-        select: { id: true },
-      });
+      const [locked] = await tx.$queryRaw<{ id: number, updatedAt: Date }[]>`
+          SELECT id, "updatedAt"
+          FROM "Article"
+          WHERE id = ${id}
+          FOR UPDATE
+        `;
 
-      if (!existing) throw new NotFoundException('게시글을 찾을 수 없습니다.');
+      if (!locked) {
+        throw new NotFoundException('게시글을 찾을 수 없습니다.');
+      }
 
       const { count } = await tx.articleLike.deleteMany({
         where: { userId, articleId: id },
@@ -176,7 +184,7 @@ export class ArticlesService {
 
       return tx.article.update({
         where: { id },
-        data: { likeCount: { decrement: 1 } },
+        data: { likeCount: { decrement: 1 }, updatedAt: locked.updatedAt },
         ...articleArgs,
       });
     });
