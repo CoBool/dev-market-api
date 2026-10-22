@@ -18,6 +18,7 @@ describe('Products find-all (e2e)', () => {
     description?: string;
     tags?: string[];
     sellerId?: number;
+    favoriteCount?: number;
   }) {
     return prisma.product.create({
       data: {
@@ -26,6 +27,7 @@ describe('Products find-all (e2e)', () => {
         price: 1000,
         tags: data.tags ?? ['기본'],
         sellerId: data.sellerId ?? userA.id,
+        favoriteCount: data.favoriteCount ?? 0,
       },
     });
   }
@@ -209,6 +211,195 @@ describe('Products find-all (e2e)', () => {
 
       expect(typeof res.body.meta.page).toBe('number');
       expect(typeof res.body.meta.limit).toBe('number');
+    });
+  });
+
+  describe('GET /products orderBy 정렬', () => {
+    async function createProducts(favoriteCounts: number[]) {
+      const products = [];
+      for (const [index, favoriteCount] of favoriteCounts.entries()) {
+        products.push(
+          await createProduct({
+            name: `orderBy 상품 ${index + 1}`,
+            favoriteCount,
+          }),
+        );
+      }
+      return products;
+    }
+
+    function getProductAt(
+      products: Awaited<ReturnType<typeof createProducts>>,
+      index: number,
+    ) {
+      const product = products[index];
+      if (!product) throw new Error(`정렬 테스트 상품 ${index}번이 없습니다.`);
+      return product;
+    }
+
+    function getExpectedFavoriteIds(
+      products: Awaited<ReturnType<typeof createProducts>>,
+    ) {
+      return [...products]
+        .sort((a, b) => b.favoriteCount - a.favoriteCount || b.id - a.id)
+        .map((product) => product.id);
+    }
+
+    it('GET /products orderBy 생략 -> 기본 recent, id 내림차순 -> 200', async () => {
+      const products = await createProducts([0, 0, 0]);
+      const expectedIds = products.map((product) => product.id).reverse();
+
+      const res = await getProducts({ limit: '50' }).expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+      expect(Object.keys(res.body.items[0]).sort()).toEqual(
+        [
+          'id',
+          'name',
+          'price',
+          'tags',
+          'images',
+          'createdAt',
+          'favoriteCount',
+          'seller',
+        ].sort(),
+      );
+      expect(res.body.meta).toEqual({
+        page: 1,
+        limit: 50,
+        totalCount: 3,
+        totalPages: 1,
+      });
+    });
+
+    it('GET /products?orderBy=recent -> id 내림차순 -> 200', async () => {
+      const products = await createProducts([0, 0, 0]);
+      const expectedIds = products.map((product) => product.id).reverse();
+
+      const res = await getProducts({ orderBy: 'recent', limit: '50' }).expect(
+        200,
+      );
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+    });
+
+    it('GET /products?orderBy=favorite -> favoriteCount 내림차순 -> 200', async () => {
+      const products = await createProducts([3, 10, 0, 7]);
+      const expectedIds = [
+        getProductAt(products, 1).id,
+        getProductAt(products, 3).id,
+        getProductAt(products, 0).id,
+        getProductAt(products, 2).id,
+      ];
+
+      const res = await getProducts({
+        orderBy: 'favorite',
+        limit: '50',
+      }).expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+    });
+
+    it('GET /products?orderBy=favorite favoriteCount가 같으면 id 내림차순 -> 200', async () => {
+      const products = await createProducts([3, 8, 3, 3, 8, 3]);
+      const expectedIds = getExpectedFavoriteIds(products);
+
+      const res = await getProducts({
+        orderBy: 'favorite',
+        limit: '50',
+      }).expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+    });
+
+    it('GET /products?orderBy=favorite&page&limit 페이지 경계에서도 전체 정렬 유지 -> 200', async () => {
+      const favoriteCounts = Array.from({ length: 25 }, (_, index) => {
+        if (index < 8) return 10;
+        if (index < 13) return 9;
+        return 7 - Math.floor((index - 13) / 4);
+      });
+      const products = await createProducts(favoriteCounts);
+      const expectedIds = getExpectedFavoriteIds(products);
+      const receivedIds: number[] = [];
+
+      for (const page of [1, 2, 3]) {
+        const res = await getProducts({
+          orderBy: 'favorite',
+          page: String(page),
+          limit: '10',
+        }).expect(200);
+        const pageIds = res.body.items.map((item: { id: number }) => item.id);
+        receivedIds.push(...pageIds);
+
+        expect(pageIds).toEqual(expectedIds.slice((page - 1) * 10, page * 10));
+        expect(res.body.meta).toEqual({
+          page,
+          limit: 10,
+          totalCount: 25,
+          totalPages: 3,
+        });
+      }
+
+      expect(new Set(receivedIds).size).toBe(25);
+      expect(receivedIds).toEqual(expectedIds);
+    });
+
+    it('GET /products?orderBy=favorite&keyword 검색 결과 안에서 favorite 정렬 -> 200', async () => {
+      const products = [];
+      for (const row of [
+        { name: '검색 낮은 찜', favoriteCount: 1 },
+        { name: '다른 주제 높은 찜', favoriteCount: 9 },
+        { name: '검색 높은 찜', favoriteCount: 6 },
+        { name: '다른 주제 낮은 찜', favoriteCount: 0 },
+      ]) {
+        products.push(await createProduct(row));
+      }
+      const expectedIds = [
+        getProductAt(products, 2).id,
+        getProductAt(products, 0).id,
+      ];
+
+      const res = await getProducts({
+        orderBy: 'favorite',
+        keyword: '검색',
+        limit: '50',
+      }).expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+      expect(res.body.meta).toEqual({
+        page: 1,
+        limit: 50,
+        totalCount: 2,
+        totalPages: 1,
+      });
+    });
+
+    it.each([
+      ['price', 'price'],
+      ['FAVORITE', 'FAVORITE'],
+      ['빈 값', ''],
+    ])(
+      'GET /products?orderBy=%s 허용하지 않은 값 -> 400',
+      async (_label, orderBy) => {
+        await getProducts({ orderBy }).expect(400);
+      },
+    );
+
+    it('GET /products?orderBy=favorite&orderBy=recent orderBy 배열 -> 400', async () => {
+      await request(app.getHttpServer())
+        .get('/products')
+        .query({ orderBy: ['favorite', 'recent'] })
+        .expect(400);
     });
   });
 
