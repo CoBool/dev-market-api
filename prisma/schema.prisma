@@ -68,9 +68,14 @@ model Product {
 
   sellerId Int
   seller   User             @relation(fields: [sellerId], references: [id])
+
+  favoriteCount Int @default(0)
+
   comments ProductComment[]
+  favorites ProductFavorite[]
 
   @@index([sellerId, id])
+  @@index([favoriteCount, id])
 }
 
 model ProductComment {
@@ -88,6 +93,17 @@ model ProductComment {
   @@index([writerId])
 }
 
+model ProductFavorite {
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId])
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique @db.VarChar(254)
@@ -102,4 +118,5 @@ model User {
   articleLikes    ArticleLike[]
   products        Product[]
   productComments ProductComment[]
+  productFavorites ProductFavorite[]
 }
