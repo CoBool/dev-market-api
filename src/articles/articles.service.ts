@@ -30,7 +30,7 @@ const ARTICLE_ORDER_BY = {
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async findOwnedArticle(
     id: number,
@@ -130,8 +130,7 @@ export class ArticlesService {
   async like(id: number, userId: number): Promise<ArticleDetail> {
     try {
       const article = await this.prisma.$transaction(async (tx) => {
-
-        const [locked] = await tx.$queryRaw<{ id: number, updatedAt: Date }[]>`
+        const [locked] = await tx.$queryRaw<{ id: number; updatedAt: Date }[]>`
           SELECT id, "updatedAt"
           FROM "Article"
           WHERE id = ${id}
@@ -168,7 +167,7 @@ export class ArticlesService {
 
   async unlike(id: number, userId: number): Promise<ArticleDetail> {
     const article = await this.prisma.$transaction(async (tx) => {
-      const [locked] = await tx.$queryRaw<{ id: number, updatedAt: Date }[]>`
+      const [locked] = await tx.$queryRaw<{ id: number; updatedAt: Date }[]>`
           SELECT id, "updatedAt"
           FROM "Article"
           WHERE id = ${id}
