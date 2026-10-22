@@ -68,6 +68,8 @@ describe('Articles (e2e)', () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
+    // 동시 요청 중 supertest가 서버를 직접 열고 닫아 연결이 끊기지 않도록 미리 연다
+    await app.listen(0);
 
     prisma = app.get(PrismaService);
 
