@@ -82,6 +82,7 @@ describe('Products find-one (e2e)', () => {
           'images',
           'createdAt',
           'updatedAt',
+          'favoriteCount',
           'seller',
         ].sort(),
       );

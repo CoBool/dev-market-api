@@ -110,6 +110,7 @@ describe('Products update (e2e)', () => {
           'images',
           'createdAt',
           'updatedAt',
+          'favoriteCount',
           'seller',
         ].sort(),
       );

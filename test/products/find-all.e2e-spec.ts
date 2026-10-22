@@ -75,7 +75,16 @@ describe('Products find-all (e2e)', () => {
       const res = await getProducts().expect(200);
 
       expect(Object.keys(res.body.items[0]).sort()).toEqual(
-        ['id', 'name', 'price', 'tags', 'images', 'createdAt', 'seller'].sort(),
+        [
+          'id',
+          'name',
+          'price',
+          'tags',
+          'images',
+          'createdAt',
+          'favoriteCount',
+          'seller',
+        ].sort(),
       );
       expect(Object.keys(res.body.items[0].seller).sort()).toEqual(
         ['id', 'nickname'].sort(),
@@ -90,6 +99,7 @@ describe('Products find-all (e2e)', () => {
       });
       expect(res.body.items[0].id).toBe(productB.id);
       expect(res.body.items[1].id).toBe(productA.id);
+      expect(res.body.items[0].favoriteCount).toBe(0);
       expect(res.body.items[0]).not.toHaveProperty('description');
       expect(res.body.items[0]).not.toHaveProperty('updatedAt');
       expect(res.body.items[0]).not.toHaveProperty('sellerId');

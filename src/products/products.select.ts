@@ -20,6 +20,7 @@ export const productListArgs = {
     tags: true,
     images: true,
     createdAt: true,
+    favoriteCount: true,
     seller: { select: { id: true, nickname: true } },
   },
 } satisfies Prisma.ProductDefaultArgs;

@@ -86,6 +86,7 @@ describe('Products (e2e)', () => {
           'images',
           'createdAt',
           'updatedAt',
+          'favoriteCount',
           'seller',
         ].sort(),
       );
@@ -95,6 +96,7 @@ describe('Products (e2e)', () => {
         price: body.price,
         tags: body.tags,
         images: [],
+        favoriteCount: 0,
         seller: { id: userA.id, nickname: 'prodA' },
       });
       expect(res.body.id).toEqual(expect.any(Number));
