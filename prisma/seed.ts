@@ -119,6 +119,12 @@ const PRODUCT_TEMPLATES = [
 const PRODUCT_EDITIONS = ['Lite', 'Starter', 'Pro', 'Team', 'Max'] as const;
 const PRODUCT_COUNT = 50;
 
+// 상품 i의 찜 수. 게시글 좋아요와 같은 이유로 같은 값을 여러 개 두고, 최대값은 사용자 수(15)다.
+const PRODUCT_FAVORITE_COUNTS = [
+  0, 2, 5, 1, 0, 7, 3, 0, 12, 2, 4, 0, 9, 1, 3, 0, 6, 15, 2, 0, 8, 3, 1, 0, 5,
+  10, 0, 2, 4, 1, 0, 6, 3, 11, 0, 2, 7, 0, 1, 4, 3, 0, 13, 5, 2, 0, 9, 1, 3, 8,
+];
+
 // 같은 시드면 항상 같은 판매자 분배가 나오도록 고정
 const RANDOM_SEED = 20261011;
 
@@ -238,7 +244,14 @@ async function main() {
 
   const random = createRandom(RANDOM_SEED);
 
-  const { count: productCount } = await prisma.product.createMany({
+  // 게시글 좋아요와 같은 방식: 찜할 사용자를 먼저 정하고 favoriteCount를 생성 시점에 넣는다.
+  const favoritersByProduct = Array.from({ length: PRODUCT_COUNT }, (_, i) =>
+    Array.from({ length: pick(PRODUCT_FAVORITE_COUNTS, i) }, (_, j) =>
+      pick(users, i + j),
+    ),
+  );
+
+  const products = await prisma.product.createManyAndReturn({
     data: Array.from({ length: PRODUCT_COUNT }, (_, i) => {
       const template = pick(PRODUCT_TEMPLATES, i);
       const editionIndex = Math.floor(i / PRODUCT_TEMPLATES.length);
@@ -256,12 +269,23 @@ async function main() {
         price: template.price * (editionIndex + 1),
         tags: [...template.tags],
         sellerId: seller.id,
+        favoriteCount: pick(favoritersByProduct, i).length,
       };
     }),
   });
 
+  const { count: productFavoriteCount } =
+    await prisma.productFavorite.createMany({
+      data: products.flatMap((product, i) =>
+        pick(favoritersByProduct, i).map((user) => ({
+          userId: user.id,
+          productId: product.id,
+        })),
+      ),
+    });
+
   console.log(
-    `seed 완료 : 사용자 ${users.length}(판매자 ${sellers.length}, 구매자 ${buyers.length}), 게시글 ${articles.length}, 댓글 ${commentCount}, 좋아요 ${articleLikeCount}, 상품 ${productCount}`,
+    `seed 완료 : 사용자 ${users.length}(판매자 ${sellers.length}, 구매자 ${buyers.length}), 게시글 ${articles.length}, 댓글 ${commentCount}, 좋아요 ${articleLikeCount}, 상품 ${products.length}, 찜 ${productFavoriteCount}`,
   );
 
   console.log(
@@ -287,6 +311,22 @@ async function main() {
     .map((article) => article.id);
   console.log(
     `${testUser.email}이 좋아요한 게시글 : id ${likedByTestUser.join(', ')}`,
+  );
+
+  const mostFavorited = products.reduce((top, product) =>
+    product.favoriteCount > top.favoriteCount ? product : top,
+  );
+  console.log(
+    `찜이 많은 상품 : id ${mostFavorited.id} (${mostFavorited.favoriteCount}개)`,
+  );
+
+  const favoritedByTestUser = products
+    .filter((_, i) =>
+      pick(favoritersByProduct, i).some((user) => user.id === testUser.id),
+    )
+    .map((product) => product.id);
+  console.log(
+    `${testUser.email}이 찜한 상품 : id ${favoritedByTestUser.join(', ')}`,
   );
 }
 
