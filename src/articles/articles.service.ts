@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
 import type {
+  ArticleOrderBy,
   ArticleSearchType,
   FindArticlesQueryDto,
 } from './dto/find-articles-query.dto.js';
@@ -21,6 +22,11 @@ import {
   type ArticleWithWriter,
 } from './articles.select.js';
 import { escapeLike } from '../common/utils/search.js';
+
+const ARTICLE_ORDER_BY = {
+  recent: [{ id: 'desc' }],
+  like: [{ likeCount: 'desc' }, { id: 'desc' }],
+} satisfies Record<ArticleOrderBy, Prisma.ArticleOrderByWithRelationInput[]>;
 
 @Injectable()
 export class ArticlesService {
@@ -58,9 +64,7 @@ export class ArticlesService {
 
     const items = await this.prisma.article.findMany({
       where,
-      orderBy: {
-        id: 'desc',
-      },
+      orderBy: ARTICLE_ORDER_BY[query.orderBy],
       skip,
       take,
       ...articleArgs,
