@@ -38,6 +38,12 @@ const ARTICLE_TOPICS = [
 const ARTICLE_COUNT = 25;
 const FEATURED_COMMENT_COUNT = 18;
 
+// 게시글 i의 좋아요 수. 같은 값을 여러 개 두어 좋아요순의 2차 정렬(id 내림차순)을 확인할 수 있게 한다.
+// 한 글에 같은 사용자가 두 번 좋아요할 수 없으므로 최대값은 사용자 수(15)다.
+const ARTICLE_LIKE_COUNTS = [
+  0, 3, 1, 5, 3, 0, 8, 3, 2, 0, 12, 1, 4, 6, 0, 3, 9, 2, 7, 1, 0, 5, 10, 3, 15,
+];
+
 // 원형 10개 × 에디션 5개 = 상품 50개
 const PRODUCT_TEMPLATES = [
   {
@@ -169,6 +175,15 @@ async function main() {
   const sellers = users.slice(0, SELLER_COUNT);
   const buyers = users.slice(SELLER_COUNT);
 
+  // 좋아요할 사용자를 먼저 정하고 likeCount를 생성 시점에 넣는다.
+  // 만든 뒤 update하면 @updatedAt이 바뀌어 모든 글이 수정된 것처럼 보인다.
+  // i만큼 밀어서 고르면 글마다 사용자 조합이 달라지고, 한 글 안에서는 중복이 없다.
+  const likersByArticle = Array.from({ length: ARTICLE_COUNT }, (_, i) =>
+    Array.from({ length: pick(ARTICLE_LIKE_COUNTS, i) }, (_, j) =>
+      pick(users, i + j),
+    ),
+  );
+
   const articles = await prisma.article.createManyAndReturn({
     data: Array.from({ length: ARTICLE_COUNT }, (_, i) => {
       const topic = pick(ARTICLE_TOPICS, i);
@@ -177,8 +192,18 @@ async function main() {
         title: `${topic}.#${i + 1}`,
         content: `${topic}에 대한 ${i + 1}번째 글입니다.`,
         writerId: pick(users, i).id,
+        likeCount: pick(likersByArticle, i).length,
       };
     }),
+  });
+
+  const { count: articleLikeCount } = await prisma.articleLike.createMany({
+    data: articles.flatMap((article, i) =>
+      pick(likersByArticle, i).map((user) => ({
+        userId: user.id,
+        articleId: article.id,
+      })),
+    ),
   });
 
   const featured = articles.at(-1);
@@ -235,7 +260,7 @@ async function main() {
   });
 
   console.log(
-    `seed 완료 : 사용자 ${users.length}(판매자 ${sellers.length}, 구매자 ${buyers.length}), 게시글 ${articles.length}, 댓글 ${commentCount}, 상품 ${productCount}`,
+    `seed 완료 : 사용자 ${users.length}(판매자 ${sellers.length}, 구매자 ${buyers.length}), 게시글 ${articles.length}, 댓글 ${commentCount}, 좋아요 ${articleLikeCount}, 상품 ${productCount}`,
   );
 
   console.log(
@@ -243,6 +268,25 @@ async function main() {
   );
 
   console.log(`댓글이 많은 게시글 : id ${featured.id}`);
+
+  const mostLiked = articles.reduce((top, article) =>
+    article.likeCount > top.likeCount ? article : top,
+  );
+  console.log(
+    `좋아요가 많은 게시글 : id ${mostLiked.id} (${mostLiked.likeCount}개)`,
+  );
+
+  const testUser = users.at(-1);
+  if (!testUser) throw new Error('사용자가 만들어지지 않았습니다.');
+
+  const likedByTestUser = articles
+    .filter((_, i) =>
+      pick(likersByArticle, i).some((user) => user.id === testUser.id),
+    )
+    .map((article) => article.id);
+  console.log(
+    `${testUser.email}이 좋아요한 게시글 : id ${likedByTestUser.join(', ')}`,
+  );
 }
 
 try {
