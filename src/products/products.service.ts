@@ -12,12 +12,20 @@ import {
   type ProductWithSeller,
   type ProductListItem,
 } from './products.select.js';
-import { FindProductsQueryDto } from './dto/find-products-query.dto.js';
+import type {
+  FindProductsQueryDto,
+  ProductOrderBy,
+} from './dto/find-products-query.dto.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { escapeLike } from '../common/utils/search.js';
 import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+
+const PRODUCT_ORDER_BY = {
+  recent: [{ id: 'desc' }],
+  favorite: [{ favoriteCount: 'desc' }, { id: 'desc' }],
+} satisfies Record<ProductOrderBy, Prisma.ProductOrderByWithRelationInput[]>;
 
 @Injectable()
 export class ProductsService {
@@ -55,9 +63,7 @@ export class ProductsService {
 
     const items = await this.prisma.product.findMany({
       where,
-      orderBy: {
-        id: 'desc',
-      },
+      orderBy: PRODUCT_ORDER_BY[query.orderBy],
       skip,
       take,
       ...productListArgs,
