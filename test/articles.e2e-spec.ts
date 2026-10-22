@@ -125,6 +125,193 @@ describe('Articles (e2e)', () => {
     expect(titles).toEqual(['B', 'A']);
   });
 
+  describe('GET /articles orderBy 정렬', () => {
+    async function createArticles(
+      rows: { title: string; likeCount?: number }[],
+    ) {
+      const articles = [];
+      for (const row of rows) {
+        articles.push(
+          await prisma.article.create({
+            data: {
+              title: row.title,
+              content: '정렬 테스트 내용',
+              writerId: userA.id,
+              likeCount: row.likeCount ?? 0,
+            },
+          }),
+        );
+      }
+      return articles;
+    }
+
+    async function getArticleIds(path: string) {
+      const res = await request(app.getHttpServer()).get(path).expect(200);
+      return res.body.items.map((item: { id: number }) => item.id);
+    }
+
+    function getArticleAt(
+      articles: Awaited<ReturnType<typeof createArticles>>,
+      index: number,
+    ) {
+      const article = articles[index];
+      if (!article)
+        throw new Error(`정렬 테스트 게시글 ${index}번이 없습니다.`);
+      return article;
+    }
+
+    it('GET /articles orderBy 생략 -> 기본 recent, id 내림차순 200', async () => {
+      const articles = await createArticles([
+        { title: '기본 정렬 1' },
+        { title: '기본 정렬 2' },
+        { title: '기본 정렬 3' },
+      ]);
+      const expectedIds = articles.map((article) => article.id).reverse();
+
+      const res = await request(app.getHttpServer())
+        .get('/articles?limit=50')
+        .expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+      expect(Object.keys(res.body.items[0]).sort()).toEqual(
+        [
+          'id',
+          'title',
+          'content',
+          'createdAt',
+          'updatedAt',
+          'likeCount',
+          'writer',
+        ].sort(),
+      );
+      expect(res.body.meta).toEqual({
+        page: 1,
+        limit: 50,
+        totalCount: 3,
+        totalPages: 1,
+      });
+    });
+
+    it('GET /articles?orderBy=recent -> id 내림차순 200', async () => {
+      const articles = await createArticles([
+        { title: 'recent 정렬 1' },
+        { title: 'recent 정렬 2' },
+        { title: 'recent 정렬 3' },
+      ]);
+      const expectedIds = articles.map((article) => article.id).reverse();
+
+      const ids = await getArticleIds('/articles?orderBy=recent&limit=50');
+
+      expect(ids).toEqual(expectedIds);
+    });
+
+    it('GET /articles?orderBy=like -> likeCount 내림차순 200', async () => {
+      const articles = await createArticles([
+        { title: '좋아요 정렬 1', likeCount: 8 },
+        { title: '좋아요 정렬 2', likeCount: 2 },
+        { title: '좋아요 정렬 3', likeCount: 5 },
+      ]);
+      const expectedIds = [
+        getArticleAt(articles, 0).id,
+        getArticleAt(articles, 2).id,
+        getArticleAt(articles, 1).id,
+      ];
+
+      const ids = await getArticleIds('/articles?orderBy=like&limit=50');
+
+      expect(ids).toEqual(expectedIds);
+    });
+
+    it('GET /articles?orderBy=like likeCount가 같으면 id 내림차순 200', async () => {
+      const articles = await createArticles([
+        { title: '동일 좋아요 1', likeCount: 4 },
+        { title: '동일 좋아요 2', likeCount: 4 },
+        { title: '동일 좋아요 3', likeCount: 4 },
+      ]);
+      const expectedIds = articles.map((article) => article.id).reverse();
+
+      const ids = await getArticleIds('/articles?orderBy=like&limit=50');
+
+      expect(ids).toEqual(expectedIds);
+    });
+
+    it('GET /articles?orderBy=like&page&limit 페이지 경계에서 중복 없이 전체 like 정렬 유지 -> 200', async () => {
+      const articles = await createArticles(
+        Array.from({ length: 25 }, (_, index) => ({
+          title: `페이지 정렬 ${index + 1}`,
+          likeCount: 3,
+        })),
+      );
+      const expectedIds = articles.map((article) => article.id).reverse();
+      const receivedIds: number[] = [];
+
+      for (const page of [1, 2, 3]) {
+        const res = await request(app.getHttpServer())
+          .get(`/articles?orderBy=like&page=${page}&limit=10`)
+          .expect(200);
+        const pageIds = res.body.items.map((item: { id: number }) => item.id);
+        receivedIds.push(...pageIds);
+
+        expect(pageIds).toEqual(expectedIds.slice((page - 1) * 10, page * 10));
+        expect(res.body.meta).toEqual({
+          page,
+          limit: 10,
+          totalCount: 25,
+          totalPages: 3,
+        });
+      }
+
+      expect(new Set(receivedIds).size).toBe(25);
+      expect(receivedIds).toEqual(expectedIds);
+    });
+
+    it('GET /articles?orderBy=like&keyword 검색 결과 안에서 like 순 정렬과 totalCount 확인 -> 200', async () => {
+      const articles = await createArticles([
+        { title: 'NestJS 낮은 좋아요', likeCount: 1 },
+        { title: '다른 주제 높은 좋아요', likeCount: 9 },
+        { title: 'NestJS 높은 좋아요', likeCount: 6 },
+        { title: '다른 주제 낮은 좋아요', likeCount: 0 },
+      ]);
+      const expectedIds = [
+        getArticleAt(articles, 2).id,
+        getArticleAt(articles, 0).id,
+      ];
+
+      const res = await request(app.getHttpServer())
+        .get('/articles?orderBy=like&keyword=NestJS&searchType=title&limit=50')
+        .expect(200);
+
+      expect(res.body.items.map((item: { id: number }) => item.id)).toEqual(
+        expectedIds,
+      );
+      expect(res.body.meta).toEqual({
+        page: 1,
+        limit: 50,
+        totalCount: 2,
+        totalPages: 1,
+      });
+    });
+
+    it.each([
+      ['views', '?orderBy=views'],
+      ['LIKE', '?orderBy=LIKE'],
+      ['빈 값', '?orderBy='],
+    ])(
+      'GET /articles orderBy=%s 허용하지 않은 값 -> 400',
+      async (_name, query) => {
+        await request(app.getHttpServer()).get(`/articles${query}`).expect(400);
+      },
+    );
+
+    it('GET /articles?orderBy=like&orderBy=recent orderBy 배열 -> 400', async () => {
+      await request(app.getHttpServer())
+        .get('/articles?orderBy=like&orderBy=recent')
+        .expect(400);
+    });
+  });
+
   it('GET /articles 쿼리 없이 요청 -> 기본 페이지네이션 200', async () => {
     await prisma.article.createMany({
       data: [
