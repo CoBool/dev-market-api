@@ -10,7 +10,3 @@ export const articleArgs = {
 } satisfies Prisma.ArticleDefaultArgs;
 
 export type ArticleWithWriter = Prisma.ArticleGetPayload<typeof articleArgs>;
-
-export type ArticleDetail = ArticleWithWriter & {
-  isLiked: boolean;
-};

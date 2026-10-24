@@ -8,7 +8,6 @@ import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { UserThrottlerGuard } from '../src/common/guards/user-throttler.guard.js';
 import { resetDatabase } from './helpers/db.js';
-import { createTestUser } from './helpers/users.js';
 
 describe('Articles (e2e)', () => {
   let app: INestApplication<App>;
@@ -779,86 +778,29 @@ describe('Articles (e2e)', () => {
       .get(`/articles/${created.body.id}`)
       .expect(200);
 
-    expect(res.body).toEqual({ ...created.body, isLiked: false });
+    expect(res.body).toEqual(created.body);
   });
 
-  describe('GET /articles/:id 선택적 인증과 isLiked', () => {
-    let viewer: { id: number; accessToken: string };
-    let otherUser: { id: number; accessToken: string };
+  describe('GET /articles/:id 공개 상세', () => {
     let article: { id: number };
-
-    beforeAll(async () => {
-      viewer = await createTestUser(app, {
-        email: 'articles-optional-viewer@test.com',
-        nickname: '선택인증조회자',
-      });
-      otherUser = await createTestUser(app, {
-        email: 'articles-optional-other@test.com',
-        nickname: '선택인증타인',
-      });
-    });
 
     beforeEach(async () => {
       article = await prisma.article.create({
         data: {
-          title: '선택적 인증 대상 글',
-          content: '좋아요 여부 확인',
+          title: '공개 상세 대상 글',
+          content: '좋아요 여부는 상세에 없음',
           writerId: userA.id,
+          likeCount: 1,
         },
       });
-    });
-
-    it('GET /articles/:id 비회원 상세 조회 시 likes가 없어도 isLiked false -> 200', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .expect(200);
-
-      expect(res.body.isLiked).toBe(false);
-    });
-
-    it('GET /articles/:id 회원이 좋아요하지 않은 글은 isLiked false -> 200', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${viewer.accessToken}`)
-        .expect(200);
-
-      expect(res.body.isLiked).toBe(false);
-    });
-
-    it('GET /articles/:id 회원이 좋아요한 글은 isLiked true -> 200', async () => {
       await prisma.articleLike.create({
-        data: { userId: viewer.id, articleId: article.id },
+        data: { userId: userB.id, articleId: article.id },
       });
-
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${viewer.accessToken}`)
-        .expect(200);
-
-      expect(res.body.isLiked).toBe(true);
     });
 
-    it('GET /articles/:id 다른 사용자만 좋아요한 글은 isLiked false -> 200', async () => {
-      await prisma.articleLike.create({
-        data: { userId: otherUser.id, articleId: article.id },
-      });
-
+    it('GET /articles/:id 상세 응답 키가 정확하고 isLiked·likes·writerId 제외 -> 200', async () => {
       const res = await request(app.getHttpServer())
         .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${viewer.accessToken}`)
-        .expect(200);
-
-      expect(res.body.isLiked).toBe(false);
-    });
-
-    it('GET /articles/:id 상세 응답 키가 정확하고 writerId와 likes 제외 -> 200', async () => {
-      await prisma.articleLike.create({
-        data: { userId: viewer.id, articleId: article.id },
-      });
-
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${viewer.accessToken}`)
         .expect(200);
 
       expect(Object.keys(res.body).sort()).toEqual(
@@ -870,89 +812,49 @@ describe('Articles (e2e)', () => {
           'updatedAt',
           'likeCount',
           'writer',
-          'isLiked',
         ].sort(),
       );
+      expect(res.body.likeCount).toBe(1);
       expect(res.body.writer).toEqual({ id: userA.id, nickname: 'userA' });
-      expect(res.body).not.toHaveProperty('writerId');
-      expect(res.body).not.toHaveProperty('likes');
     });
 
-    it.each(['Basic abc', 'Bearer'])(
-      'GET /articles/:id 토큰 형식 오류(%s) -> 401',
+    it('GET /articles/:id 좋아요한 회원과 비회원이 같은 응답 -> 200', async () => {
+      const guest = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .expect(200);
+      const liker = await request(app.getHttpServer())
+        .get(`/articles/${article.id}`)
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(200);
+
+      expect(liker.body).toEqual(guest.body);
+    });
+
+    it.each(['Basic abc', 'Bearer', 'Bearer not-a-jwt', ''])(
+      'GET /articles/:id 잘못된 Authorization(%s)이 있어도 공개 상세 -> 200',
       async (authorization) => {
-        const res = await request(app.getHttpServer())
+        await request(app.getHttpServer())
           .get(`/articles/${article.id}`)
           .set('Authorization', authorization)
-          .expect(401);
-
-        expect(res.body.message).toBe('로그인이 필요합니다.');
+          .expect(200);
       },
     );
 
-    it('GET /articles/:id JWT가 아닌 토큰 -> 401', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', 'Bearer not-a-jwt')
-        .expect(401);
-
-      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
-    });
-
-    it('GET /articles/:id 다른 secret으로 서명한 토큰 -> 401', async () => {
+    it('GET /articles/:id 만료된 토큰이 있어도 공개 상세 -> 200', async () => {
       const secret = app
         .get(ConfigService)
         .getOrThrow<string>('JWT_ACCESS_SECRET');
       const token = await app
         .get(JwtService)
         .signAsync(
-          { sub: viewer.id },
-          { secret: `${secret}-different`, expiresIn: '15m' },
-        );
-
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(401);
-
-      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
-    });
-
-    it('GET /articles/:id 만료된 토큰 -> 401', async () => {
-      const secret = app
-        .get(ConfigService)
-        .getOrThrow<string>('JWT_ACCESS_SECRET');
-      const token = await app
-        .get(JwtService)
-        .signAsync(
-          { sub: viewer.id, exp: Math.floor(Date.now() / 1000) - 60 },
+          { sub: userB.id, exp: Math.floor(Date.now() / 1000) - 60 },
           { secret },
         );
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get(`/articles/${article.id}`)
         .set('Authorization', `Bearer ${token}`)
-        .expect(401);
-
-      expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
-    });
-
-    it('GET /articles/:id 빈 Authorization 헤더 -> 401', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', '')
-        .expect(401);
-
-      expect(res.body.message).toBe('로그인이 필요합니다.');
-    });
-
-    it('GET /articles/:id 없는 글을 회원이 조회 -> 404', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/articles/${article.id + 1000}`)
-        .set('Authorization', `Bearer ${viewer.accessToken}`)
-        .expect(404);
-
-      expect(res.body.message).toBe('게시글을 찾을 수 없습니다.');
+        .expect(200);
     });
   });
 
@@ -1048,7 +950,7 @@ describe('Articles (e2e)', () => {
       .get(`/articles/${created.body.id}`)
       .expect(200);
 
-    expect(updated.body).toEqual({ ...res.body, isLiked: false });
+    expect(updated.body).toEqual(res.body);
   });
 
   it('PATCH /articles/:id 존재하지 않는 글 -> 404', async () => {
@@ -1224,382 +1126,5 @@ describe('Articles (e2e)', () => {
     await request(app.getHttpServer())
       .get(`/articles/${created.body.id}`)
       .expect(200);
-  });
-
-  describe('POST /articles/:id/like 및 DELETE /articles/:id/like', () => {
-    async function createArticle() {
-      return prisma.article.create({
-        data: {
-          title: '좋아요 테스트 글',
-          content: '좋아요 동작 확인',
-          writerId: userA.id,
-        },
-      });
-    }
-
-    function postLike(articleId: string | number, token?: string) {
-      const req = request(app.getHttpServer()).post(
-        `/articles/${encodeURIComponent(String(articleId))}/like`,
-      );
-      if (token) req.set('Authorization', `Bearer ${token}`);
-      return req;
-    }
-
-    function deleteLike(articleId: string | number, token?: string) {
-      const req = request(app.getHttpServer()).delete(
-        `/articles/${encodeURIComponent(String(articleId))}/like`,
-      );
-      if (token) req.set('Authorization', `Bearer ${token}`);
-      return req;
-    }
-
-    function expectLikeResponseKeys(body: Record<string, unknown>) {
-      expect(Object.keys(body).sort()).toEqual(
-        [
-          'id',
-          'title',
-          'content',
-          'createdAt',
-          'updatedAt',
-          'likeCount',
-          'writer',
-          'isLiked',
-        ].sort(),
-      );
-      expect(body).not.toHaveProperty('writerId');
-      expect(body).not.toHaveProperty('likes');
-    }
-
-    it('POST /articles/:id/like 좋아요 -> 201, 행과 likeCount 저장', async () => {
-      const article = await createArticle();
-
-      const res = await postLike(article.id, userA.accessToken).expect(201);
-
-      expectLikeResponseKeys(res.body);
-      expect(res.body).toMatchObject({
-        id: article.id,
-        isLiked: true,
-        likeCount: 1,
-      });
-      expect(
-        await prisma.articleLike.findUnique({
-          where: {
-            userId_articleId: { userId: userA.id, articleId: article.id },
-          },
-        }),
-      ).not.toBeNull();
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(1);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(1);
-    });
-
-    it('POST /articles/:id/like 이미 좋아요한 글에 다시 요청 -> 409와 DB 변화 없음', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-
-      const res = await postLike(article.id, userA.accessToken).expect(409);
-
-      expect(res.body.message).toBe('이미 좋아요한 게시글입니다.');
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(1);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(1);
-    });
-
-    it('POST /articles/:id/like 다른 사용자가 좋아요 -> 201과 likeCount 2', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-
-      const res = await postLike(article.id, userB.accessToken).expect(201);
-
-      expect(res.body.isLiked).toBe(true);
-      expect(res.body.likeCount).toBe(2);
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(2);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(2);
-    });
-
-    it('DELETE /articles/:id/like 좋아요 취소 -> 200, 행 삭제와 likeCount 감소', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-      await postLike(article.id, userB.accessToken).expect(201);
-
-      const res = await deleteLike(article.id, userA.accessToken).expect(200);
-
-      expectLikeResponseKeys(res.body);
-      expect(res.body).toMatchObject({
-        id: article.id,
-        isLiked: false,
-        likeCount: 1,
-      });
-      expect(
-        await prisma.articleLike.findUnique({
-          where: {
-            userId_articleId: { userId: userA.id, articleId: article.id },
-          },
-        }),
-      ).toBeNull();
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(1);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(1);
-    });
-
-    it('POST /articles/:id/like 좋아요로 게시글 updatedAt은 바뀌지 않음 -> 201', async () => {
-      const article = await createArticle();
-      const before = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const res = await postLike(article.id, userA.accessToken).expect(201);
-      const after = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-
-      expect(res.body.updatedAt).toBe(before.updatedAt.toISOString());
-      expect(after.updatedAt.toISOString()).toBe(
-        before.updatedAt.toISOString(),
-      );
-    });
-
-    it('DELETE /articles/:id/like 취소로 게시글 updatedAt은 바뀌지 않음 -> 200', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-      const before = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const res = await deleteLike(article.id, userA.accessToken).expect(200);
-      const after = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-
-      expect(res.body.updatedAt).toBe(before.updatedAt.toISOString());
-      expect(after.updatedAt.toISOString()).toBe(
-        before.updatedAt.toISOString(),
-      );
-    });
-
-    it('PATCH /articles/:id 좋아요 후 게시글을 수정하면 updatedAt 변경 -> 200', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-      const before = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const res = await request(app.getHttpServer())
-        .patch(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${userA.accessToken}`)
-        .send({ title: '좋아요 후 수정한 제목' })
-        .expect(200);
-      const after = await prisma.article.findUniqueOrThrow({
-        where: { id: article.id },
-      });
-
-      expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(
-        before.updatedAt.getTime(),
-      );
-      expect(after.updatedAt.toISOString()).toBe(res.body.updatedAt);
-    });
-
-    it('DELETE /articles/:id/like 좋아요하지 않은 글 취소 -> 409와 DB 변화 없음', async () => {
-      const article = await createArticle();
-
-      const res = await deleteLike(article.id, userA.accessToken).expect(409);
-
-      expect(res.body.message).toBe('좋아요하지 않은 게시글입니다.');
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(0);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(0);
-    });
-
-    it('DELETE /articles/:id/like 내 좋아요 취소 후 다른 사용자의 행은 유지 -> 200', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-      await postLike(article.id, userB.accessToken).expect(201);
-
-      await deleteLike(article.id, userA.accessToken).expect(200);
-
-      expect(
-        await prisma.articleLike.findUnique({
-          where: {
-            userId_articleId: { userId: userB.id, articleId: article.id },
-          },
-        }),
-      ).not.toBeNull();
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(1);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(1);
-    });
-
-    it('GET /articles/:id 좋아요 후 회원과 비회원 상세 조회 -> 200', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-
-      const memberRes = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${userA.accessToken}`)
-        .expect(200);
-      const guestRes = await request(app.getHttpServer())
-        .get(`/articles/${article.id}`)
-        .expect(200);
-
-      expect(memberRes.body).toMatchObject({ isLiked: true, likeCount: 1 });
-      expect(guestRes.body).toMatchObject({ isLiked: false, likeCount: 1 });
-    });
-
-    it('GET /articles 목록 항목에 likeCount가 있고 isLiked는 없음 -> 200', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-
-      const res = await request(app.getHttpServer())
-        .get('/articles')
-        .expect(200);
-      const item = res.body.items.find(
-        (candidate: { id: number }) => candidate.id === article.id,
-      );
-
-      expect(item).toHaveProperty('likeCount', 1);
-      expect(item).not.toHaveProperty('isLiked');
-    });
-
-    it.each([
-      ['POST /articles/:id/like', (id: number) => postLike(id)],
-      ['DELETE /articles/:id/like', (id: number) => deleteLike(id)],
-    ])('%s 토큰 없이 요청 -> 401, DB 변화 없음', async (_path, makeRequest) => {
-      const article = await createArticle();
-
-      await makeRequest(article.id).expect(401);
-
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(0);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(0);
-    });
-
-    it.each([
-      [
-        'POST /articles/:id/like',
-        (id: number) => postLike(id, userA.accessToken),
-      ],
-      [
-        'DELETE /articles/:id/like',
-        (id: number) => deleteLike(id, userA.accessToken),
-      ],
-    ])('%s 없는 게시글 -> 404', async (_path, makeRequest) => {
-      const res = await makeRequest(999999).expect(404);
-
-      expect(res.body.message).toBe('게시글을 찾을 수 없습니다.');
-    });
-
-    it.each(['0', 'abc'])(
-      'POST /articles/:id/like 잘못된 id(%s) -> 400',
-      async (id) => {
-        await postLike(id, userA.accessToken).expect(400);
-      },
-    );
-
-    it.each(['0', 'abc'])(
-      'DELETE /articles/:id/like 잘못된 id(%s) -> 400',
-      async (id) => {
-        await deleteLike(id, userA.accessToken).expect(400);
-      },
-    );
-
-    it('DELETE /articles/:id 좋아요가 있는 게시글 삭제 -> 좋아요 행도 Cascade 삭제 204', async () => {
-      const article = await createArticle();
-      await postLike(article.id, userA.accessToken).expect(201);
-      await postLike(article.id, userB.accessToken).expect(201);
-
-      await request(app.getHttpServer())
-        .delete(`/articles/${article.id}`)
-        .set('Authorization', `Bearer ${userA.accessToken}`)
-        .expect(204);
-
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(0);
-    });
-
-    it('POST /articles/:id/like 서로 다른 사용자 10명이 동시에 좋아요 -> 회차마다 10개와 likeCount 10', async () => {
-      for (let round = 1; round <= 5; round += 1) {
-        const article = await createArticle();
-        const users = await Promise.all(
-          Array.from({ length: 10 }, (_, index) =>
-            createTestUser(app, {
-              email: `articles-like-r${round}-u${index}@test.com`,
-              nickname: `동시성${round}${index}`,
-            }),
-          ),
-        );
-
-        const responses = await Promise.all(
-          users.map((user) => postLike(article.id, user.accessToken)),
-        );
-
-        for (const response of responses) {
-          expect(response.status, `회차 ${round}: 좋아요 요청 상태`).toBe(201);
-        }
-        const likeRows = await prisma.articleLike.count({
-          where: { articleId: article.id },
-        });
-        const savedArticle = await prisma.article.findUniqueOrThrow({
-          where: { id: article.id },
-        });
-        expect(likeRows, `회차 ${round}: ArticleLike 행 수`).toBe(10);
-        expect(savedArticle.likeCount, `회차 ${round}: Article.likeCount`).toBe(
-          10,
-        );
-      }
-    });
-
-    it('POST /articles/:id/like 같은 사용자가 동시에 5번 좋아요 -> 201 한 개, 409 네 개', async () => {
-      const article = await createArticle();
-
-      const responses = await Promise.all(
-        Array.from({ length: 5 }, () =>
-          postLike(article.id, userA.accessToken),
-        ),
-      );
-
-      expect(
-        responses.map((response) => response.status).sort((a, b) => a - b),
-      ).toEqual([201, 409, 409, 409, 409]);
-      expect(
-        await prisma.articleLike.count({ where: { articleId: article.id } }),
-      ).toBe(1);
-      expect(
-        (await prisma.article.findUniqueOrThrow({ where: { id: article.id } }))
-          .likeCount,
-      ).toBe(1);
-    });
   });
 });

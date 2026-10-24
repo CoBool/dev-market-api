@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -16,11 +15,7 @@ import type {
   ArticleSearchType,
   FindArticlesQueryDto,
 } from './dto/find-articles-query.dto.js';
-import {
-  articleArgs,
-  type ArticleDetail,
-  type ArticleWithWriter,
-} from './articles.select.js';
+import { articleArgs, type ArticleWithWriter } from './articles.select.js';
 import { escapeLike } from '../common/utils/search.js';
 
 const ARTICLE_ORDER_BY = {
@@ -73,21 +68,16 @@ export class ArticlesService {
     return { items, meta };
   }
 
-  async findOne(id: number, userId?: number): Promise<ArticleDetail> {
+  async findOne(id: number): Promise<ArticleWithWriter> {
     const article = await this.prisma.article.findUnique({
       where: { id },
-      include: {
-        ...articleArgs.include,
-        likes: userId ? { where: { userId }, select: { userId: true } } : false,
-      },
+      include: articleArgs.include,
       omit: articleArgs.omit,
     });
 
     if (!article) throw new NotFoundException('게시글을 찾을 수 없습니다.');
 
-    const { likes, ...rest } = article;
-
-    return { ...rest, isLiked: userId ? likes.length > 0 : false };
+    return article;
   }
 
   async create(
@@ -125,77 +115,6 @@ export class ArticlesService {
     await this.prisma.article.delete({
       where: { id },
     });
-  }
-
-  async like(id: number, userId: number): Promise<ArticleDetail> {
-    try {
-      const article = await this.prisma.$transaction(async (tx) => {
-        const [locked] = await tx.$queryRaw<{ id: number; updatedAt: Date }[]>`
-          SELECT id, "updatedAt"
-          FROM "Article"
-          WHERE id = ${id}
-          FOR UPDATE
-        `;
-
-        if (!locked) {
-          throw new NotFoundException('게시글을 찾을 수 없습니다.');
-        }
-
-        await tx.articleLike.create({ data: { userId, articleId: id } });
-
-        return tx.article.update({
-          where: { id },
-          data: { likeCount: { increment: 1 }, updatedAt: locked.updatedAt },
-          ...articleArgs,
-        });
-      });
-
-      return {
-        ...article,
-        isLiked: true,
-      };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('이미 좋아요한 게시글입니다.');
-      }
-      throw error;
-    }
-  }
-
-  async unlike(id: number, userId: number): Promise<ArticleDetail> {
-    const article = await this.prisma.$transaction(async (tx) => {
-      const [locked] = await tx.$queryRaw<{ id: number; updatedAt: Date }[]>`
-          SELECT id, "updatedAt"
-          FROM "Article"
-          WHERE id = ${id}
-          FOR UPDATE
-        `;
-
-      if (!locked) {
-        throw new NotFoundException('게시글을 찾을 수 없습니다.');
-      }
-
-      const { count } = await tx.articleLike.deleteMany({
-        where: { userId, articleId: id },
-      });
-
-      if (count === 0)
-        throw new ConflictException('좋아요하지 않은 게시글입니다.');
-
-      return tx.article.update({
-        where: { id },
-        data: { likeCount: { decrement: 1 }, updatedAt: locked.updatedAt },
-        ...articleArgs,
-      });
-    });
-
-    return {
-      ...article,
-      isLiked: false,
-    };
   }
 
   private buildSearchWhere(
