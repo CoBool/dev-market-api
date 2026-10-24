@@ -26,19 +26,18 @@ AI 코딩 에이전트(Codex, Claude Code, Gemini CLI 등)가 이 저장소에�
 
 ## Architecture
 
-- 도메인 모듈 [코드]: `auth`, `users`, `articles`(하위 `articles/article-comments`), `products`(하위 `products/product-comments`, `products/product-favorites`). 기본은 `Module` / `Controller` / `Service`이고, `dto/`, `<domain>.select.ts`는 필요한 도메인에만 있습니다(예: `users`는 `dto/`가 없고 Service에서 인라인 `omit`을 씁니다). 필요 없는 파일이나 계층을 형식적으로 만들지 않습니다.
+- 도메인 모듈 [코드]: `auth`, `users`, `articles`(하위 `articles/article-comments`, `articles/article-likes`), `products`(하위 `products/product-comments`, `products/product-favorites`). 기본은 `Module` / `Controller` / `Service`이고, `dto/`, `<domain>.select.ts`는 필요한 도메인에만 있습니다(예: `users`는 `dto/`가 없고 Service에서 인라인 `omit`을 씁니다). 필요 없는 파일이나 계층을 형식적으로 만들지 않습니다.
 - 공통 코드는 `src/common/` (`dto`, `transforms`, `utils`, `filters`, `guards`, `interfaces`, `constants`).
 - `PrismaModule`은 전역 모듈이 아니어서 **각 도메인 모듈이 `imports: [PrismaModule]`** 합니다. Service가 `PrismaService`를 생성자 주입받아 직접 쿼리합니다(별도 Repository 계층 없음).
-- Controller: 라우팅, DTO 바인딩, `@CurrentUser()`, `@Public()`, `@OptionalAuth()`, 요청 제한 데코레이터. 로직은 Service에 둡니다.
+- Controller: 라우팅, DTO 바인딩, `@CurrentUser()`, `@Public()`, 요청 제한 데코레이터. 로직은 Service에 둡니다.
   - 컨트롤러의 모든 경로가 같은 접두사를 쓰면 `@Controller('products/:id/favorite')`처럼 접두사에 둡니다. 댓글처럼 접두사가 다른 경로가 섞이면(`articles/:id/comments` + `article-comments/:id`) `@Controller()`로 비우고 핸들러에 전체 경로를 씁니다.
 - 전역 설정 (`src/app.module.ts`):
   - `APP_PIPE`: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`
   - `APP_FILTER`: `PrismaExceptionFilter` (P2002/P2003 → 409, P2025 → 404, 그 외 → 500 + `Logger`) [ADR 0004]
   - `APP_GUARD`: `JwtAuthGuard` (`AuthModule`에서 등록). **기본 거부**이며 공개 API만 `@Public()`을 붙입니다 [ADR 0003].
     Guard는 서명만 검증하고 `request.user = { id }`를 채웁니다. `@Public()` API에서는 `@CurrentUser()`를 쓰지 않습니다.
-  - `@OptionalAuth()` [ADR 0018]: `Authorization` 헤더가 없으면 비회원으로 통과(`user` 없음), 헤더가 있는데 잘못되면 401입니다.
-    핸들러는 `@CurrentUser() user?: AuthUser`로 받고 `user?.id`를 Service에 넘깁니다. 지금은 `GET /articles/:id`(`isLiked`)만 씁니다.
-    `@Public()`과 함께 붙이면 Guard가 에러를 던집니다.
+  - 선택적 인증(로그인 여부에 따라 같은 API의 응답이 달라짐)은 쓰지 않습니다 [ADR 0018]. 공개 응답은 모든 사용자에게 같게 두고(캐싱),
+    사용자별 상태는 인증이 필요한 별도 API로 분리합니다(예: `GET /articles/:id` + `GET /articles/:id/like`). `@OptionalAuth()`는 비교 구현 뒤 제거했습니다.
 - 요청 제한 [ADR 0010]: `ThrottlerGuard`는 전역이 아닙니다. 필요한 핸들러에만 `@UseGuards(UserThrottlerGuard)` + `@Throttle(...)`을 붙입니다(로그인 사용자는 user id, 그 외는 IP 기준).
 
 ## Coding Conventions
@@ -68,9 +67,11 @@ AI 코딩 에이전트(Codex, Claude Code, Gemini CLI 등)가 이 저장소에�
 - **권한** [코드]: 수정/삭제 전에 Service의 private `findOwnedXxx(id, userId, action)`으로 404 → 403 순서로 확인합니다. 하위 리소스는 `ensureXxxExists`로 부모 존재를 먼저 확인합니다.
 - **에러**: Nest 내장 예외(`NotFoundException` 등)와 한국어 메시지를 씁니다. 상태 코드: 생성 201, 삭제 204(`@HttpCode(204)`), 로그인/refresh 200.
   좋아요 취소·찜 취소 `DELETE`는 변경된 상태를 본문으로 돌려주므로 `@HttpCode(200)`입니다.
-- **좋아요·찜 카운터** [코드, ADR 0017, 0018]: 두 도메인의 API 모양은 비교를 위해 일부러 다릅니다(게시글: `POST`/`DELETE` + 중복 409 + 상세의 `isLiked`, 상품: 멱등 `PUT`/`DELETE` + 별도 `GET`). 통일 여부는 0018 회고에서 정하므로 한쪽에 맞추지 마세요. 쓰기 순서는 같습니다.
+- **좋아요·찜** [코드, ADR 0017, 0018]: 게시글 좋아요(`articles/article-likes`)와 상품 찜(`products/product-favorites`)은 같은 계약입니다.
+  `GET`/`PUT`/`DELETE /<부모>/:id/<like|favorite>`, 모두 인증 필요·200, 응답 `{ <부모>Id, isLiked|isFavorite, likeCount|favoriteCount }`, 중복 요청도 200(멱등).
+  부모 상세·목록 응답에는 내 상태를 넣지 않습니다. 코드는 공통화하지 않고 도메인마다 같은 구조로 둡니다(이름이 도메인 언어). 쓰기 순서:
   1. `$transaction` 안에서 부모 행을 `SELECT ... FOR UPDATE`로 먼저 잠급니다(없으면 404). 부모 삭제의 Cascade와 잠금 순서를 맞춰 데드락을 막습니다.
-  2. 조인 행을 만들거나 지우고, **실제로 바뀐 경우에만** 카운터를 `increment`/`decrement`합니다. 다시 세지(`_count`) 않습니다.
+  2. `createMany({ skipDuplicates: true })`/`deleteMany`로 조인 행을 만들거나 지우고, `count`가 1일 때(**실제로 바뀐 경우**)만 카운터를 `increment`/`decrement`합니다. 다시 세지(`_count`) 않습니다.
   3. 카운터 갱신 때 잠근 행의 `updatedAt`을 그대로 다시 넣어 `@updatedAt`이 바뀌지 않게 합니다.
 - **DB**: 길이 제한은 DTO와 `@db.VarChar(n)`를 맞추고, 범위·개수 제약은 마이그레이션 SQL의 CHECK로 이중 검증합니다 [ADR 0013]. 작성자 관계는 Restrict(탈퇴는 익명화 예정) [ADR 0007], 댓글 → 부모는 Cascade. 좋아요·찜 조인 테이블은 복합 PK `(userId, 부모Id)`, 부모와 사용자 양쪽 Cascade이고, 카운터는 `CHECK (>= 0)`입니다.
 - 포맷: Prettier(`singleQuote`, `trailingComma: all`). 코드 주석은 한국어이며 "왜"를 설명할 때만 씁니다.
@@ -103,8 +104,8 @@ AI 코딩 에이전트(Codex, Claude Code, Gemini CLI 등)가 이 저장소에�
 - E2E 파일은 대부분 `AppModule`로 앱을 띄우고 `resetDatabase()`(`test/helpers/db.ts`)로 FK 역순 삭제합니다(`app.e2e-spec.ts`는 DB를 정리하지 않음). **모델을 추가하면 이 삭제 순서도 갱신**해야 합니다.
 - 테스트 사용자는 `createTestUser()`(`test/helpers/users.ts`)로 DB에 직접 만들고 토큰을 발급합니다(가입 요청 제한을 소비하지 않음).
 - **동시 요청 테스트**(`Promise.all`로 같은 앱에 여러 요청)가 있는 파일은 `beforeAll`에서 `app.init()` 뒤에 `await app.listen(0)`을 호출합니다.
-  서버가 열려 있지 않으면 supertest가 요청마다 서버를 열고 닫아, 먼저 끝난 요청이 서버를 닫으면서 다른 요청이 `ECONNRESET`으로 실패합니다(`favorite.e2e-spec.ts`, `articles.e2e-spec.ts` 참고).
-- 파일 구성은 도메인마다 다릅니다: 상품은 API별 파일(`test/products/*.e2e-spec.ts`), 게시글·댓글·인증·요청 제한은 도메인별 통합 파일(`test/articles.e2e-spec.ts` 등). 새 테스트는 해당 도메인의 기존 구성을 따릅니다. 응답 키를 정확히 비교하고, 실패 시 DB가 바뀌지 않았는지도 확인하는 패턴이 있습니다.
+  서버가 열려 있지 않으면 supertest가 요청마다 서버를 열고 닫아, 먼저 끝난 요청이 서버를 닫으면서 다른 요청이 `ECONNRESET`으로 실패합니다(`test/products/favorite.e2e-spec.ts`, `test/article-likes.e2e-spec.ts` 참고).
+- 파일 구성은 도메인마다 다릅니다: 상품은 API별 파일(`test/products/*.e2e-spec.ts`), 게시글·댓글·좋아요·인증·요청 제한은 도메인별 통합 파일(`test/articles.e2e-spec.ts`, `test/article-likes.e2e-spec.ts` 등). 새 테스트는 해당 도메인의 기존 구성을 따릅니다. 응답 키를 정확히 비교하고, 실패 시 DB가 바뀌지 않았는지도 확인하는 패턴이 있습니다.
 - `schema.prisma`를 바꾸면 `pnpm exec prisma generate`가 필요합니다(Prisma 7은 `migrate dev` 후 자동 생성하지 않음).
 - 실행하지 못한 검증은 "실행하지 않음"으로 보고합니다. 테스트 통과 여부를 추측하지 않습니다.
 
