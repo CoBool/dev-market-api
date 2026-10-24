@@ -10,7 +10,6 @@ import type { Request } from 'express';
 import type { AuthUser } from '../interfaces/auth-user.interface.js';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
-import { IS_OPTIONAL_AUTH_KEY } from '../decorators/optional-auth.decorator.js';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -26,16 +25,6 @@ export class JwtAuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    const isOptional = this.reflector.getAllAndOverride<boolean>(
-      IS_OPTIONAL_AUTH_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-
-    if (isPublic && isOptional)
-      throw new Error(
-        '@Public()과 @OptionalAuth()는 동시에 사용할 수 없습니다.',
-      );
-
     if (isPublic) return true;
 
     const request = context
@@ -43,8 +32,6 @@ export class JwtAuthGuard implements CanActivate {
       .getRequest<Request & { user?: AuthUser }>();
 
     const authorization = request.headers.authorization;
-
-    if (isOptional && authorization === undefined) return true;
 
     const [type, token] = authorization?.split(' ') ?? [];
     if (type !== 'Bearer' || !token) {
