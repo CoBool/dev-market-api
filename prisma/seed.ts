@@ -149,6 +149,26 @@ function pick<T>(list: readonly T[], i: number): T {
   return item;
 }
 
+// createManyAndReturn은 반환 순서를 보장하지 않는다(Prisma 문서).
+// 아래 코드는 입력 i번째와 결과 i번째를 같은 행으로 보고 연결하므로, 고유한 값으로 입력 순서를 되찾는다.
+function inInputOrder<T, K>(
+  rows: readonly T[],
+  keys: readonly K[],
+  keyOf: (row: T) => K,
+): T[] {
+  const rowsByKey = new Map(rows.map((row) => [keyOf(row), row]));
+  if (rowsByKey.size !== keys.length) {
+    throw new Error('입력 순서를 되찾을 값이 고유하지 않습니다.');
+  }
+
+  return keys.map((key) => {
+    const row = rowsByKey.get(key);
+    if (!row) throw new Error('생성 결과에서 입력 행을 찾을 수 없습니다.');
+
+    return row;
+  });
+}
+
 // mulberry32: 0 이상 1 미만의 재현 가능한 난수 생성기
 function createRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -175,9 +195,13 @@ async function main() {
 
   const passwordHash = await hash(PASSWORD, 10);
 
-  const users = await prisma.user.createManyAndReturn({
-    data: SEED_USERS.map((user) => ({ ...user, passwordHash })),
-  });
+  const users = inInputOrder(
+    await prisma.user.createManyAndReturn({
+      data: SEED_USERS.map((user) => ({ ...user, passwordHash })),
+    }),
+    SEED_USERS.map((user) => user.email),
+    (user) => user.email,
+  );
 
   const sellers = users.slice(0, SELLER_COUNT);
   const buyers = users.slice(SELLER_COUNT);
@@ -191,18 +215,22 @@ async function main() {
     ),
   );
 
-  const articles = await prisma.article.createManyAndReturn({
-    data: Array.from({ length: ARTICLE_COUNT }, (_, i) => {
-      const topic = pick(ARTICLE_TOPICS, i);
+  const articleData = Array.from({ length: ARTICLE_COUNT }, (_, i) => {
+    const topic = pick(ARTICLE_TOPICS, i);
 
-      return {
-        title: `${topic}.#${i + 1}`,
-        content: `${topic}에 대한 ${i + 1}번째 글입니다.`,
-        writerId: pick(users, i).id,
-        likeCount: pick(likersByArticle, i).length,
-      };
-    }),
+    return {
+      title: `${topic}.#${i + 1}`,
+      content: `${topic}에 대한 ${i + 1}번째 글입니다.`,
+      writerId: pick(users, i).id,
+      likeCount: pick(likersByArticle, i).length,
+    };
   });
+
+  const articles = inInputOrder(
+    await prisma.article.createManyAndReturn({ data: articleData }),
+    articleData.map((article) => article.title),
+    (article) => article.title,
+  );
 
   const { count: articleLikeCount } = await prisma.articleLike.createMany({
     data: articles.flatMap((article, i) =>
@@ -251,28 +279,33 @@ async function main() {
     ),
   );
 
-  const products = await prisma.product.createManyAndReturn({
-    data: Array.from({ length: PRODUCT_COUNT }, (_, i) => {
-      const template = pick(PRODUCT_TEMPLATES, i);
-      const editionIndex = Math.floor(i / PRODUCT_TEMPLATES.length);
+  const productData = Array.from({ length: PRODUCT_COUNT }, (_, i) => {
+    const template = pick(PRODUCT_TEMPLATES, i);
+    const editionIndex = Math.floor(i / PRODUCT_TEMPLATES.length);
 
-      // 앞 판매자 수만큼은 1명당 1개씩 배정해 모든 판매자가 상품을 갖게 하고,
-      // 나머지는 시드 랜덤으로 배정
-      const seller =
-        i < sellers.length
-          ? pick(sellers, i)
-          : pick(sellers, Math.floor(random() * sellers.length));
+    // 앞 판매자 수만큼은 1명당 1개씩 배정해 모든 판매자가 상품을 갖게 하고,
+    // 나머지는 시드 랜덤으로 배정
+    const seller =
+      i < sellers.length
+        ? pick(sellers, i)
+        : pick(sellers, Math.floor(random() * sellers.length));
 
-      return {
-        name: `${template.name} ${pick(PRODUCT_EDITIONS, editionIndex)}`,
-        description: template.description,
-        price: template.price * (editionIndex + 1),
-        tags: [...template.tags],
-        sellerId: seller.id,
-        favoriteCount: pick(favoritersByProduct, i).length,
-      };
-    }),
+    return {
+      name: `${template.name} ${pick(PRODUCT_EDITIONS, editionIndex)}`,
+      description: template.description,
+      price: template.price * (editionIndex + 1),
+      tags: [...template.tags],
+      sellerId: seller.id,
+      favoriteCount: pick(favoritersByProduct, i).length,
+    };
   });
+
+  // 이름은 템플릿 10개 × 에디션 5개 조합이라 50개가 모두 다르다
+  const products = inInputOrder(
+    await prisma.product.createManyAndReturn({ data: productData }),
+    productData.map((product) => product.name),
+    (product) => product.name,
+  );
 
   const { count: productFavoriteCount } =
     await prisma.productFavorite.createMany({
