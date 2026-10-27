@@ -21,6 +21,8 @@ import { escapeLike } from '../common/utils/search.js';
 import { buildPageMeta, getSkipTake } from '../common/utils/pagination.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import type { CursorPaginationQueryDto } from '../common/dto/cursor-pagination-query.dto.js';
+import type { CursorPaginated } from '../common/interfaces/cursor-paginated.interface.js';
 
 const PRODUCT_ORDER_BY = {
   recent: [{ id: 'desc' }],
@@ -119,6 +121,31 @@ export class ProductsService {
     await this.prisma.product.delete({
       where: { id },
     });
+  }
+
+  async findMine(
+    userId: number,
+    query: CursorPaginationQueryDto,
+  ): Promise<CursorPaginated<ProductListItem>> {
+    const { cursor, limit } = query;
+
+    const rows = await this.prisma.product.findMany({
+      where: {
+        sellerId: userId,
+        id: cursor ? { lt: cursor } : undefined,
+      },
+      orderBy: { id: 'desc' },
+      take: limit + 1,
+      ...productListArgs,
+    });
+
+    const hasNext = rows.length > limit;
+
+    const items = hasNext ? rows.slice(0, limit) : rows;
+
+    const nextCursor = hasNext ? (items.at(-1)?.id ?? null) : null;
+
+    return { items, meta: { nextCursor } };
   }
 
   private buildSearchWhere(

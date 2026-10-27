@@ -22,6 +22,8 @@ import { FindProductsQueryDto } from './dto/find-products-query.dto.js';
 import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { IdParamDto } from '../common/dto/id-param.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { CursorPaginationQueryDto } from '../common/dto/cursor-pagination-query.dto.js';
+import type { CursorPaginated } from '../common/interfaces/cursor-paginated.interface.js';
 
 @Controller('products')
 export class ProductsController {
@@ -67,5 +69,18 @@ export class ProductsController {
     @CurrentUser() user: AuthUser,
   ): Promise<void> {
     return this.productsService.remove(id, user.id);
+  }
+}
+
+@Controller('users/me')
+export class MyProductsController {
+  constructor(private readonly productsService: ProductsService) {}
+
+  @Get('products')
+  findMine(
+    @Query() query: CursorPaginationQueryDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<CursorPaginated<ProductListItem>> {
+    return this.productsService.findMine(user.id, query);
   }
 }

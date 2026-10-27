@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ProductsController } from './products.controller.js';
+import {
+  MyProductsController,
+  ProductsController,
+} from './products.controller.js';
 import { ProductsService } from './products.service.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { ProductCommentsModule } from './product-comments/product-comments.module.js';
@@ -7,7 +10,7 @@ import { ProductFavoritesModule } from './product-favorites/product-favorites.mo
 
 @Module({
   imports: [PrismaModule, ProductCommentsModule, ProductFavoritesModule],
-  controllers: [ProductsController],
+  controllers: [ProductsController, MyProductsController],
   providers: [ProductsService],
 })
 export class ProductsModule {}
