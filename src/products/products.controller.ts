@@ -10,7 +10,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ProductsService } from './products.service.js';
+import {
+  ProductsService,
+  type FavoriteProductsPage,
+} from './products.service.js';
 import { UserThrottlerGuard } from '../common/guards/user-throttler.guard.js';
 import { Throttle } from '@nestjs/throttler';
 import { CreateProductDto } from './dto/create-product.dto.js';
@@ -24,6 +27,7 @@ import { IdParamDto } from '../common/dto/id-param.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { CursorPaginationQueryDto } from '../common/dto/cursor-pagination-query.dto.js';
 import type { CursorPaginated } from '../common/interfaces/cursor-paginated.interface.js';
+import { FindMyFavoritesQueryDto } from './dto/find-my-favorites-query.dto.js';
 
 @Controller('products')
 export class ProductsController {
@@ -77,10 +81,18 @@ export class MyProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get('products')
-  findMine(
+  findMyProducts(
     @Query() query: CursorPaginationQueryDto,
     @CurrentUser() user: AuthUser,
   ): Promise<CursorPaginated<ProductListItem>> {
-    return this.productsService.findMine(user.id, query);
+    return this.productsService.findMyProducts(user.id, query);
+  }
+
+  @Get('favorites')
+  findMyFavorites(
+    @Query() query: FindMyFavoritesQueryDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<FavoriteProductsPage> {
+    return this.productsService.findMyFavorites(user.id, query);
   }
 }

@@ -23,11 +23,21 @@ import type { Paginated } from '../common/interfaces/paginated.interface.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import type { CursorPaginationQueryDto } from '../common/dto/cursor-pagination-query.dto.js';
 import type { CursorPaginated } from '../common/interfaces/cursor-paginated.interface.js';
+import type { FindMyFavoritesQueryDto } from './dto/find-my-favorites-query.dto.js';
+import {
+  decodeFavoriteCursor,
+  encodeFavoriteCursor,
+} from './utils/favorite-cursor.js';
 
 const PRODUCT_ORDER_BY = {
   recent: [{ id: 'desc' }],
   favorite: [{ favoriteCount: 'desc' }, { id: 'desc' }],
 } satisfies Record<ProductOrderBy, Prisma.ProductOrderByWithRelationInput[]>;
+
+export type FavoriteProductsPage = {
+  items: ProductListItem[];
+  meta: { nextCursor: string | null };
+};
 
 @Injectable()
 export class ProductsService {
@@ -123,7 +133,7 @@ export class ProductsService {
     });
   }
 
-  async findMine(
+  async findMyProducts(
     userId: number,
     query: CursorPaginationQueryDto,
   ): Promise<CursorPaginated<ProductListItem>> {
@@ -144,6 +154,54 @@ export class ProductsService {
     const items = hasNext ? rows.slice(0, limit) : rows;
 
     const nextCursor = hasNext ? (items.at(-1)?.id ?? null) : null;
+
+    return { items, meta: { nextCursor } };
+  }
+
+  async findMyFavorites(
+    userId: number,
+    query: FindMyFavoritesQueryDto,
+  ): Promise<FavoriteProductsPage> {
+    const { cursor, limit } = query;
+
+    const decodedCursor = cursor ? decodeFavoriteCursor(cursor) : undefined;
+
+    const rows = await this.prisma.productFavorite.findMany({
+      where: {
+        userId,
+        OR: decodedCursor
+          ? [
+              { createdAt: { lt: decodedCursor.createdAt } },
+              {
+                createdAt: decodedCursor.createdAt,
+                productId: { lt: decodedCursor.productId },
+              },
+            ]
+          : undefined,
+      },
+      orderBy: [{ createdAt: 'desc' }, { productId: 'desc' }],
+      take: limit + 1,
+      select: {
+        createdAt: true,
+        productId: true,
+        product: productListArgs,
+      },
+    });
+
+    const hasNext = rows.length > limit;
+    const pageRows = hasNext ? rows.slice(0, limit) : rows;
+
+    const lastRow = pageRows.at(-1);
+
+    const nextCursor =
+      hasNext && lastRow
+        ? encodeFavoriteCursor({
+            createdAt: lastRow.createdAt,
+            productId: lastRow.productId,
+          })
+        : null;
+
+    const items = pageRows.map((row) => row.product);
 
     return { items, meta: { nextCursor } };
   }
