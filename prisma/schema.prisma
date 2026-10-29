@@ -101,6 +101,7 @@ model ProductFavorite {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([userId, productId])
+  @@index([userId, createdAt, productId])
   @@index([productId])
 }
 
